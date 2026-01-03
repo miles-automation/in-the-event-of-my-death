@@ -1,3 +1,4 @@
+---
 name: review-checklist
 description: Checklist-driven code review helper with prompts and light static checks. Use when reviewing PRs or spotting technical debt, and when you need reusable question sets by area (tests, security, migrations, docs) plus quick commands to surface risks.
 ---
