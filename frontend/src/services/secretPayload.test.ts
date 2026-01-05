@@ -41,4 +41,63 @@ describe('secretPayload', () => {
     const decoded = decodeSecretPayload(bytes)
     expect(decoded).toEqual({ text: 'legacy secret', attachments: [] })
   })
+
+  describe('filename sanitization', () => {
+    it('removes Unix path traversal from attachment names', () => {
+      const encoded = encodeSecretPayloadV1({
+        text: '',
+        attachments: [
+          { name: '../../../etc/passwd', type: 'text/plain', bytes: new Uint8Array([1]) },
+        ],
+      })
+      const decoded = decodeSecretPayload(encoded)
+      expect(decoded.attachments[0].name).toBe('passwd')
+    })
+
+    it('removes Windows path traversal from attachment names', () => {
+      const encoded = encodeSecretPayloadV1({
+        text: '',
+        attachments: [
+          {
+            name: '..\\..\\windows\\system32\\config',
+            type: 'text/plain',
+            bytes: new Uint8Array([1]),
+          },
+        ],
+      })
+      const decoded = decodeSecretPayload(encoded)
+      expect(decoded.attachments[0].name).toBe('config')
+    })
+
+    it('removes control characters from attachment names', () => {
+      const encoded = encodeSecretPayloadV1({
+        text: '',
+        attachments: [
+          { name: 'file\x00name\x1f.txt', type: 'text/plain', bytes: new Uint8Array([1]) },
+        ],
+      })
+      const decoded = decodeSecretPayload(encoded)
+      expect(decoded.attachments[0].name).toBe('filename.txt')
+    })
+
+    it('truncates long names while preserving extension', () => {
+      const longName = 'a'.repeat(300) + '.pdf'
+      const encoded = encodeSecretPayloadV1({
+        text: '',
+        attachments: [{ name: longName, type: 'application/pdf', bytes: new Uint8Array([1]) }],
+      })
+      const decoded = decodeSecretPayload(encoded)
+      expect(decoded.attachments[0].name.length).toBe(255)
+      expect(decoded.attachments[0].name.endsWith('.pdf')).toBe(true)
+    })
+
+    it('returns fallback for empty filename after sanitization', () => {
+      const encoded = encodeSecretPayloadV1({
+        text: '',
+        attachments: [{ name: '../', type: 'text/plain', bytes: new Uint8Array([1]) }],
+      })
+      const decoded = decodeSecretPayload(encoded)
+      expect(decoded.attachments[0].name).toBe('attachment')
+    })
+  })
 })
