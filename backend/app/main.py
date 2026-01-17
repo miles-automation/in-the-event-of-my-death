@@ -13,7 +13,7 @@ from app.database import engine
 from app.logging_config import get_logger, setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import limiter
-from app.routers import capability_tokens, challenges, feedback, secrets
+from app.routers import attachments, capability_tokens, challenges, feedback, secrets
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.services.discord_service import send_error_alert
 
@@ -163,6 +163,7 @@ app.add_middleware(
 app.add_middleware(LoggingMiddleware)
 
 # Routers
+app.include_router(attachments.router, prefix="/api/v1", tags=["attachments"])
 app.include_router(capability_tokens.router, prefix="/api/v1", tags=["capability-tokens"])
 app.include_router(challenges.router, prefix="/api/v1", tags=["challenges"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])

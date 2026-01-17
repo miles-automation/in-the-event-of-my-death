@@ -8,6 +8,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.config import settings
 from app.database import SessionLocal
 from app.logging_config import get_logger
+from app.services.attachment_service import delete_orphaned_attachments
 from app.services.discord_service import send_error_alert_sync
 from app.services.pow_service import cleanup_expired_challenges
 from app.services.secret_service import (
@@ -148,6 +149,33 @@ def cleanup_challenges_job() -> None:
         db.close()
 
 
+def cleanup_orphaned_attachments_job() -> None:
+    """
+    Run periodic cleanup of orphaned attachments.
+
+    Orphaned attachments are those uploaded but never linked to a secret.
+    This can happen if a user uploads files but doesn't complete secret creation.
+    """
+    if not settings.object_storage_enabled:
+        return  # Nothing to clean up if object storage is disabled
+
+    db = SessionLocal()
+    try:
+        storage_service = ObjectStorageService(settings)
+        deleted = asyncio.run(delete_orphaned_attachments(db, storage_service, max_age_hours=24))
+        if deleted > 0:
+            logger.info("cleanup_orphaned_attachments_completed", deleted_count=deleted)
+    except Exception as e:
+        logger.error("cleanup_orphaned_attachments_failed", error=str(e))
+        send_error_alert_sync(
+            error_type="Scheduler Job Failed",
+            message=str(e),
+            context={"job_name": "cleanup_orphaned_attachments"},
+        )
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     """Start the background scheduler."""
     scheduler.add_job(
@@ -160,6 +188,12 @@ def start_scheduler() -> None:
         cleanup_challenges_job,
         trigger=IntervalTrigger(hours=settings.cleanup_interval_hours),
         id="cleanup_expired_challenges",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        cleanup_orphaned_attachments_job,
+        trigger=IntervalTrigger(hours=settings.cleanup_interval_hours),
+        id="cleanup_orphaned_attachments",
         replace_existing=True,
     )
     scheduler.start()

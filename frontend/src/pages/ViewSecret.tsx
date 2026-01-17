@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { extractFromFragment } from '../utils/urlFragments'
-import { getSecretStatus, retrieveSecret } from '../services/api'
-import { decryptBytes } from '../services/crypto'
+import { getSecretStatus, retrieveSecret, getAttachmentUrl } from '../services/api'
+import { decryptBytes, decryptFileMetadata, decryptFileBlob } from '../services/crypto'
 import { decodeSecretPayload } from '../services/secretPayload'
 
 type State =
@@ -167,19 +167,54 @@ export default function ViewSecret() {
         )
 
         const decoded = decodeSecretPayload(decryptedBytes)
-        const attachments = decoded.attachments.map((a) => {
-          const buffer = a.bytes.buffer.slice(
-            a.bytes.byteOffset,
-            a.bytes.byteOffset + a.bytes.byteLength,
-          ) as ArrayBuffer
-          const blob = new Blob([buffer], { type: a.type || 'application/octet-stream' })
-          return {
-            name: a.name,
-            type: a.type || 'application/octet-stream',
-            size: a.bytes.length,
-            url: URL.createObjectURL(blob),
+
+        // Process V2 attachments: fetch from S3 and decrypt
+        const attachments: { name: string; type: string; size: number; url: string }[] = []
+        for (const ref of decoded.attachments) {
+          try {
+            // Get presigned URL for downloading from S3
+            const urlResponse = await getAttachmentUrl(ref.storage_key, params.token)
+
+            // Fetch encrypted blob from S3
+            const blobResponse = await fetch(urlResponse.presigned_url)
+            if (!blobResponse.ok) {
+              throw new Error(`Failed to download attachment: ${blobResponse.status}`)
+            }
+            const encryptedBlob = new Uint8Array(await blobResponse.arrayBuffer())
+
+            // Decrypt metadata to get filename and type
+            const metadata = await decryptFileMetadata(
+              ref.encrypted_metadata,
+              ref.metadata_iv,
+              ref.metadata_auth_tag,
+              params.key,
+            )
+
+            // Decrypt the file blob
+            const fileBytes = await decryptFileBlob(
+              encryptedBlob,
+              ref.blob_iv,
+              ref.blob_auth_tag,
+              params.key,
+            )
+
+            // Create blob URL for download
+            const buffer = fileBytes.buffer.slice(
+              fileBytes.byteOffset,
+              fileBytes.byteOffset + fileBytes.byteLength,
+            ) as ArrayBuffer
+            const blob = new Blob([buffer], { type: metadata.type })
+            attachments.push({
+              name: metadata.name,
+              type: metadata.type,
+              size: fileBytes.length,
+              url: URL.createObjectURL(blob),
+            })
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : 'unknown error'
+            throw new Error(`Failed to decrypt attachment: ${reason}`)
           }
-        })
+        }
 
         setState({ type: 'decrypted', text: decoded.text, attachments })
       }

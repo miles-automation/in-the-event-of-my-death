@@ -3,6 +3,9 @@
  */
 
 import type {
+  AttachmentUploadRequest,
+  AttachmentUploadResponse,
+  AttachmentUrlResponse,
   Challenge,
   SecretCreateRequest,
   SecretCreateResponse,
@@ -176,6 +179,38 @@ export async function submitFeedback(
     body: JSON.stringify({ message, email: email || null }),
   })
   return handleResponse(response)
+}
+
+/**
+ * Upload an encrypted file attachment to object storage.
+ *
+ * The attachment is created without being linked to a secret.
+ * It will be linked when the secret is created via createSecret.
+ */
+export async function uploadAttachment(
+  request: AttachmentUploadRequest,
+): Promise<AttachmentUploadResponse> {
+  const response = await fetch(`${API_BASE}/attachments/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  return handleResponse<AttachmentUploadResponse>(response)
+}
+
+/**
+ * Get a presigned URL for downloading an attachment from S3.
+ *
+ * Requires the decrypt token for the secret this attachment belongs to.
+ */
+export async function getAttachmentUrl(
+  storageKey: string,
+  decryptToken: string,
+): Promise<AttachmentUrlResponse> {
+  const response = await fetch(`${API_BASE}/attachments/${encodeURIComponent(storageKey)}`, {
+    headers: { Authorization: `Bearer ${decryptToken}` },
+  })
+  return handleResponse<AttachmentUrlResponse>(response)
 }
 
 export { ApiError }

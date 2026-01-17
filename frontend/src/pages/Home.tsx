@@ -1,8 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import { generateSecretFromBytes, base64ToBytes } from '../services/crypto'
-import { requestChallenge, createSecret } from '../services/api'
+import {
+  generateAesKey,
+  exportKey,
+  generateIv,
+  encryptBytes,
+  encryptFileForUpload,
+  generateRandomHex,
+  bytesToHex,
+  base64ToBytes,
+  computePayloadHash,
+} from '../services/crypto'
+import { requestChallenge, createSecret, uploadAttachment } from '../services/api'
 import { solveChallenge } from '../services/pow'
-import { encodeSecretPayloadV1 } from '../services/secretPayload'
+import { encodeSecretPayload, type AttachmentRef } from '../services/secretPayload'
 import { generateShareableLinks } from '../utils/urlFragments'
 import {
   applyDateOffset,
@@ -141,44 +151,83 @@ export default function Home() {
     setStep('processing')
 
     try {
-      // Step 1: Read attachments and build payload
-      setProgress(files.length > 0 ? 'Preparing attachments...' : 'Preparing your secret...')
-      const attachments = await Promise.all(
-        files.map(async (file) => {
+      // Step 1: Generate encryption key first (needed for file uploads)
+      setProgress('Generating encryption key...')
+      const key = await generateAesKey()
+      const keyBytes = await exportKey(key)
+      const editToken = generateRandomHex(32)
+      const decryptToken = generateRandomHex(32)
+
+      // Step 2: Upload files to S3 (if any)
+      const attachmentRefs: AttachmentRef[] = []
+      const attachmentIds: string[] = []
+
+      if (files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          setProgress(`Uploading file ${i + 1} of ${files.length}: ${file.name}...`)
+
           try {
-            return {
-              name: file.name,
-              type: file.type || 'application/octet-stream',
-              bytes: new Uint8Array(await file.arrayBuffer()),
-            }
+            // Read file bytes
+            const fileBytes = new Uint8Array(await file.arrayBuffer())
+
+            // Encrypt file and metadata
+            const encrypted = await encryptFileForUpload(
+              fileBytes,
+              { name: file.name, type: file.type || 'application/octet-stream' },
+              key,
+            )
+
+            // Upload to S3
+            const uploadResponse = await uploadAttachment({
+              encrypted_blob: encrypted.encrypted_blob,
+              blob_iv: encrypted.blob_iv,
+              blob_auth_tag: encrypted.blob_auth_tag,
+              encrypted_metadata: encrypted.encrypted_metadata,
+              metadata_iv: encrypted.metadata_iv,
+              metadata_auth_tag: encrypted.metadata_auth_tag,
+              position: i,
+            })
+
+            // Collect reference for V2 payload
+            attachmentRefs.push({
+              storage_key: uploadResponse.storage_key,
+              encrypted_metadata: encrypted.encrypted_metadata,
+              metadata_iv: encrypted.metadata_iv,
+              metadata_auth_tag: encrypted.metadata_auth_tag,
+              blob_iv: encrypted.blob_iv,
+              blob_auth_tag: encrypted.blob_auth_tag,
+            })
+
+            // Collect ID for linking to secret
+            attachmentIds.push(uploadResponse.attachment_id)
           } catch (err) {
             const reason = err instanceof Error ? err.message : 'unknown error'
-            throw new Error(`Failed to read file "${file.name}": ${reason}`)
+            throw new Error(`Failed to upload file "${file.name}": ${reason}`)
           }
-        }),
-      )
+        }
+      }
 
-      const payloadBytes = encodeSecretPayloadV1({
-        text: message,
-        attachments,
-      })
-
-      // Step 2: Generate cryptographic materials
+      // Step 3: Build and encrypt V2 payload
       setProgress('Encrypting your secret...')
-      const secret = await generateSecretFromBytes(payloadBytes)
+      const payloadBytes = encodeSecretPayload(message, attachmentRefs)
+      const iv = generateIv()
+      const encrypted = await encryptBytes(payloadBytes, key, iv)
 
-      const ciphertextSize = base64ToBytes(secret.encrypted.ciphertext).length
+      const ciphertextSize = base64ToBytes(encrypted.ciphertext).length
+      const payloadHash = await computePayloadHash(encrypted)
 
       const trimmedCapabilityToken = capabilityToken.trim() || null
 
-      // Step 3: Create secret on server (PoW or capability token)
+      // Step 4: Create secret on server (PoW or capability token)
       setProgress('Storing encrypted secret...')
       const createRequest: Parameters<typeof createSecret>[0] = {
-        ciphertext: secret.encrypted.ciphertext,
-        iv: secret.encrypted.iv,
-        auth_tag: secret.encrypted.authTag,
-        edit_token: secret.editToken,
-        decrypt_token: secret.decryptToken,
+        ciphertext: encrypted.ciphertext,
+        iv: encrypted.iv,
+        auth_tag: encrypted.authTag,
+        edit_token: editToken,
+        decrypt_token: decryptToken,
+        attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
       }
 
       // Send presets for server-calculated times (avoids clock skew), or absolute times for custom
@@ -205,11 +254,11 @@ export default function Home() {
 
             // Request PoW challenge
             setProgress('Requesting proof-of-work challenge...')
-            const challenge = await requestChallenge(secret.payloadHash, ciphertextSize)
+            const challenge = await requestChallenge(payloadHash, ciphertextSize)
 
             // Solve PoW
             setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
-            const powProof = await solveChallenge(challenge, secret.payloadHash, (iterations) => {
+            const powProof = await solveChallenge(challenge, payloadHash, (iterations) => {
               setProgress(
                 `Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`,
               )
@@ -220,12 +269,9 @@ export default function Home() {
             return createSecret(createRequest)
           })()
 
-      // Step 4: Generate shareable links
-      const shareableLinks = generateShareableLinks(
-        secret.editToken,
-        secret.decryptToken,
-        secret.encryptionKey,
-      )
+      // Step 5: Generate shareable links
+      const encryptionKey = bytesToHex(keyBytes)
+      const shareableLinks = generateShareableLinks(editToken, decryptToken, encryptionKey)
 
       setLinks(shareableLinks)
       // Use server-provided times (accurate, no clock skew)

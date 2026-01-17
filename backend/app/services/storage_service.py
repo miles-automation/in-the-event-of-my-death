@@ -107,3 +107,30 @@ class ObjectStorageService:
             raise RuntimeError("Object storage session was not initialized")
         async with session.client(**self._client_kwargs(config)) as s3:
             await s3.delete_object(Bucket=config.bucket, Key=object_key)
+
+    async def generate_presigned_url(
+        self,
+        *,
+        object_key: str,
+        expires_in: int = 300,
+    ) -> str:
+        """Generate a presigned GET URL for downloading an object.
+
+        Args:
+            object_key: The S3 object key
+            expires_in: URL expiry time in seconds (default 5 minutes)
+
+        Returns:
+            Presigned URL string
+        """
+        config = self._require_enabled()
+        session = self._session
+        if session is None:
+            raise RuntimeError("Object storage session was not initialized")
+        async with session.client(**self._client_kwargs(config)) as s3:
+            url = await s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": config.bucket, "Key": object_key},
+                ExpiresIn=expires_in,
+            )
+            return url

@@ -167,6 +167,22 @@ def retrieve_secret(db: Session, secret: Secret) -> dict:
             "message": "Secret not yet available",
         }
 
+    # Build attachment metadata list
+    attachments = []
+    for att in secret.attachments:
+        attachments.append(
+            {
+                "storage_key": att.storage_key,
+                "encrypted_metadata": base64.b64encode(att.encrypted_metadata).decode(),
+                "metadata_iv": base64.b64encode(att.metadata_iv).decode(),
+                "metadata_auth_tag": base64.b64encode(att.metadata_auth_tag).decode(),
+                "blob_iv": base64.b64encode(att.blob_iv).decode(),
+                "blob_auth_tag": base64.b64encode(att.blob_auth_tag).decode(),
+                "blob_size": att.blob_size,
+                "position": att.position,
+            }
+        )
+
     # Capture data before clearing
     result = {
         "status": "available",
@@ -175,6 +191,7 @@ def retrieve_secret(db: Session, secret: Secret) -> dict:
         "auth_tag": base64.b64encode(secret.auth_tag).decode(),
         "retrieved_at": now,
         "message": "This secret has been deleted and cannot be retrieved again.",
+        "attachments": attachments if attachments else None,
     }
 
     # Clear ciphertext immediately in the same transaction

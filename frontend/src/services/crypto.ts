@@ -257,3 +257,105 @@ export async function generateSecretFromBytes(
     payloadHash,
   }
 }
+
+/**
+ * Encrypted file ready for upload to S3.
+ */
+export type EncryptedFileUpload = {
+  encrypted_blob: string // Base64
+  blob_iv: string // Base64
+  blob_auth_tag: string // Base64
+  encrypted_metadata: string // Base64
+  metadata_iv: string // Base64
+  metadata_auth_tag: string // Base64
+}
+
+/**
+ * Encrypt a file for upload to object storage.
+ *
+ * Encrypts both the file bytes and metadata (filename, type) separately,
+ * using the same key but different IVs.
+ *
+ * @param fileBytes - Raw file bytes to encrypt
+ * @param metadata - File metadata (name and type)
+ * @param key - AES-GCM key to use for encryption
+ * @returns Encrypted data ready for upload
+ */
+export async function encryptFileForUpload(
+  fileBytes: Uint8Array,
+  metadata: { name: string; type: string },
+  key: CryptoKey,
+): Promise<EncryptedFileUpload> {
+  // Encrypt the file blob
+  const blobIv = generateIv()
+  const blobEncrypted = await encryptBytes(fileBytes, key, blobIv)
+
+  // Encrypt the metadata
+  const metadataIv = generateIv()
+  const metadataJson = JSON.stringify(metadata)
+  const metadataEncrypted = await encrypt(metadataJson, key, metadataIv)
+
+  return {
+    encrypted_blob: blobEncrypted.ciphertext,
+    blob_iv: blobEncrypted.iv,
+    blob_auth_tag: blobEncrypted.authTag,
+    encrypted_metadata: metadataEncrypted.ciphertext,
+    metadata_iv: metadataEncrypted.iv,
+    metadata_auth_tag: metadataEncrypted.authTag,
+  }
+}
+
+/**
+ * Decrypt file metadata.
+ *
+ * @param encryptedMetadata - Base64 encoded encrypted metadata
+ * @param metadataIv - Base64 encoded IV
+ * @param metadataAuthTag - Base64 encoded auth tag
+ * @param keyHex - Encryption key as hex string
+ * @returns Decrypted metadata object with name and type
+ */
+export async function decryptFileMetadata(
+  encryptedMetadata: string,
+  metadataIv: string,
+  metadataAuthTag: string,
+  keyHex: string,
+): Promise<{ name: string; type: string }> {
+  const json = await decrypt(
+    {
+      ciphertext: encryptedMetadata,
+      iv: metadataIv,
+      authTag: metadataAuthTag,
+    },
+    keyHex,
+  )
+  const parsed = JSON.parse(json)
+  return {
+    name: typeof parsed.name === 'string' ? parsed.name : 'attachment',
+    type: typeof parsed.type === 'string' ? parsed.type : 'application/octet-stream',
+  }
+}
+
+/**
+ * Decrypt a file blob downloaded from S3.
+ *
+ * @param encryptedBlob - Encrypted file bytes (raw, not base64)
+ * @param blobIv - Base64 encoded IV
+ * @param blobAuthTag - Base64 encoded auth tag
+ * @param keyHex - Encryption key as hex string
+ * @returns Decrypted file bytes
+ */
+export async function decryptFileBlob(
+  encryptedBlob: Uint8Array,
+  blobIv: string,
+  blobAuthTag: string,
+  keyHex: string,
+): Promise<Uint8Array> {
+  return decryptBytes(
+    {
+      ciphertext: bytesToBase64(encryptedBlob),
+      iv: blobIv,
+      authTag: blobAuthTag,
+    },
+    keyHex,
+  )
+}

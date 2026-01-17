@@ -17,6 +17,7 @@ from app.schemas.secret import (
     SecretRetrieveResponse,
     SecretStatusResponse,
 )
+from app.services.attachment_service import link_attachments_to_secret
 from app.services.capability_token_service import (
     consume_capability_token,
     find_capability_token,
@@ -161,6 +162,16 @@ async def create_new_secret(
         decrypt_token=secret_data.decrypt_token,
         expires_at=secret_data.expires_at,
     )
+
+    # Step 5b: Link any pre-uploaded attachments to the secret
+    if secret_data.attachment_ids:
+        linked_count = link_attachments_to_secret(db, secret.id, secret_data.attachment_ids)
+        logger.info(
+            "attachments_linked",
+            secret_id=secret.id,
+            requested=len(secret_data.attachment_ids),
+            linked=linked_count,
+        )
 
     # Step 6: Mark PoW challenge or capability token as consumed
     if capability_token:

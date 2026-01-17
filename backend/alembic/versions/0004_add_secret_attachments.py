@@ -29,7 +29,7 @@ def upgrade() -> None:
             "secret_id",
             sa.String(36),
             sa.ForeignKey("secrets.id", ondelete="CASCADE"),
-            nullable=False,
+            nullable=True,  # Nullable to allow orphaned uploads during upload→create flow
         ),
         # Object storage location
         sa.Column("storage_key", sa.String(512), nullable=False, unique=True),
