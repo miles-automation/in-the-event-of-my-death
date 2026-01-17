@@ -67,7 +67,7 @@ function startsWithMagic(payload: Uint8Array): boolean {
   for (let i = 0; i < MAGIC.length; i++) {
     if (payload[i] !== MAGIC[i]) return false
   }
-  return payload[MAGIC.length] === VERSION
+  return true // Version checked separately in decodeSecretPayload
 }
 
 export function encodeSecretPayloadV1(input: {
@@ -122,6 +122,14 @@ export function decodeSecretPayload(payloadBytes: Uint8Array): SecretPayload {
     return { text: decoder.decode(payloadBytes), attachments: [] }
   }
 
+  // Check version byte explicitly to give clear error for future versions
+  const version = payloadBytes[MAGIC.length]
+  if (version !== VERSION) {
+    throw new Error(
+      `Unsupported payload version: ${version}. Please update your client to view this secret.`,
+    )
+  }
+
   const decoder = new TextDecoder()
 
   let offset = MAGIC.length + 1
@@ -170,7 +178,7 @@ export function decodeSecretPayload(payloadBytes: Uint8Array): SecretPayload {
     const type = typeof meta.type === 'string' ? meta.type : 'application/octet-stream'
     const size = typeof meta.size === 'number' ? meta.size : 0
 
-    if (size < 0 || !Number.isFinite(size)) {
+    if (size < 0 || !Number.isFinite(size) || !Number.isInteger(size)) {
       throw new Error('Invalid payload: attachment size invalid')
     }
     if (payloadBytes.length < offset + size) {

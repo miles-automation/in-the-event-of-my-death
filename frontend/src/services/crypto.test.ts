@@ -38,6 +38,20 @@ describe('crypto service', () => {
       const decoded = base64ToBytes(base64)
       expect(decoded).toEqual(bytes)
     })
+
+    it('should handle large byte arrays without stack overflow', () => {
+      // 1MB payload - would overflow with spread operator approach
+      const largeBytes = new Uint8Array(1024 * 1024)
+      for (let i = 0; i < largeBytes.length; i++) {
+        largeBytes[i] = i % 256
+      }
+
+      const base64 = bytesToBase64(largeBytes)
+      expect(base64.length).toBeGreaterThan(0)
+
+      const decoded = base64ToBytes(base64)
+      expect(decoded).toEqual(largeBytes)
+    })
   })
 
   describe('random generation', () => {

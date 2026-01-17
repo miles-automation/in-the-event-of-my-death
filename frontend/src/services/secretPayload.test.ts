@@ -42,6 +42,17 @@ describe('secretPayload', () => {
     expect(decoded).toEqual({ text: 'legacy secret', attachments: [] })
   })
 
+  it('throws clear error for unsupported payload version', () => {
+    // Create a payload with version byte = 2 instead of 1
+    const encoded = encodeSecretPayloadV1({ text: 'test', attachments: [] })
+    // Modify the version byte (offset 5, after 5-byte magic)
+    encoded[5] = 2
+
+    expect(() => decodeSecretPayload(encoded)).toThrow(
+      'Unsupported payload version: 2. Please update your client to view this secret.',
+    )
+  })
+
   describe('filename sanitization', () => {
     it('removes Unix path traversal from attachment names', () => {
       const encoded = encodeSecretPayloadV1({

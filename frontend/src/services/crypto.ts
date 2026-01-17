@@ -34,9 +34,15 @@ export function hexToBytes(hex: string): Uint8Array {
 
 /**
  * Convert a Uint8Array to a base64 string.
+ * Uses chunked processing to avoid call stack limits with large arrays.
  */
 export function bytesToBase64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
+  let binary = ''
+  const chunkSize = 0x8000 // 32KB chunks to stay well within call stack limits
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
 }
 
 /**

@@ -25,6 +25,13 @@ function getInitialParams(): { token: string | null; key: string | null } {
   return { token: token || null, key: key || null }
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
+
 export default function ViewSecret() {
   useEffect(() => {
     document.title = 'View Secret | In The Event Of My Death'
@@ -296,7 +303,8 @@ export default function ViewSecret() {
                       {a.name}
                     </a>{' '}
                     <span className="helper-text">
-                      ({Math.round(a.size / 1024)} KB{a.type ? `, ${a.type}` : ''})
+                      ({formatBytes(a.size)}
+                      {a.type ? `, ${a.type}` : ''})
                     </span>
                   </li>
                 ))}
