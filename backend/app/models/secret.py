@@ -1,10 +1,14 @@
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.secret_attachment import SecretAttachment
 
 
 class Secret(Base):
@@ -38,3 +42,11 @@ class Secret(Base):
     # Metadata
     ciphertext_size: Mapped[int] = mapped_column(Integer, nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Relationships
+    attachments: Mapped[list["SecretAttachment"]] = relationship(
+        "SecretAttachment",
+        back_populates="secret",
+        cascade="all, delete-orphan",
+        order_by="SecretAttachment.position",
+    )

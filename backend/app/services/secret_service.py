@@ -227,7 +227,43 @@ def get_secret_status(db: Session, secret: Secret) -> dict:
     }
 
 
-def clear_expired_secrets(db: Session) -> int:
+def get_attachment_keys_for_cleanup(db: Session) -> list[str]:
+    """
+    Get storage keys for attachments belonging to secrets that are about to be cleared.
+
+    These are attachments for secrets that are expired or retrieved but not yet cleared.
+    The caller should delete these from object storage before/after clearing the secrets.
+    """
+    from sqlalchemy import or_
+
+    from app.models.secret_attachment import SecretAttachment
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    # Get secrets that will be cleared
+    secrets_to_clear = (
+        db.query(Secret.id)
+        .filter(
+            Secret.cleared_at == None,  # noqa: E711 - Not already cleared
+            or_(
+                Secret.expires_at <= now,  # Expired
+                Secret.retrieved_at != None,  # noqa: E711 - Retrieved
+            ),
+        )
+        .subquery()
+    )
+
+    # Get storage keys for attachments of those secrets
+    attachment_keys = (
+        db.query(SecretAttachment.storage_key)
+        .filter(SecretAttachment.secret_id.in_(db.query(secrets_to_clear.c.id)))
+        .all()
+    )
+
+    return [key[0] for key in attachment_keys]
+
+
+def clear_expired_secrets(db: Session) -> tuple[int, list[str]]:
     """
     Clear secrets' ciphertext while preserving metadata for analytics.
 
@@ -239,12 +275,17 @@ def clear_expired_secrets(db: Session) -> int:
 
     Sets ciphertext/iv/auth_tag to None and cleared_at to current time.
     Rows are never deleted - metadata is preserved for analytics.
+    Attachments are cascade-deleted via foreign key.
 
-    Returns the count of cleared secrets.
+    Returns a tuple of (count of cleared secrets, list of storage keys to delete).
+    The caller should delete those storage keys from object storage.
     """
     from sqlalchemy import or_
 
     now = datetime.now(UTC).replace(tzinfo=None)
+
+    # Get attachment storage keys BEFORE clearing (they'll be cascade-deleted)
+    storage_keys = get_attachment_keys_for_cleanup(db)
 
     result = (
         db.query(Secret)
@@ -265,4 +306,4 @@ def clear_expired_secrets(db: Session) -> int:
         )
     )
     db.commit()
-    return result
+    return result, storage_keys

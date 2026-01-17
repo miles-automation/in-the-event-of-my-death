@@ -56,10 +56,11 @@ class TestClearExpiredSecrets:
         assert expired_secret.ciphertext is not None
 
         # Run the clear expired secrets function
-        cleared_count = clear_expired_secrets(db_session)
+        cleared_count, storage_keys = clear_expired_secrets(db_session)
 
         # Verify the secret was cleared
         assert cleared_count == 1
+        assert storage_keys == []  # No attachments
         db_session.refresh(expired_secret)
         assert expired_secret.cleared_at is not None
         assert expired_secret.ciphertext is None
@@ -102,10 +103,11 @@ class TestClearExpiredSecrets:
         assert retrieved_secret.ciphertext is not None
 
         # Run the clear function
-        cleared_count = clear_expired_secrets(db_session)
+        cleared_count, storage_keys = clear_expired_secrets(db_session)
 
         # Verify the secret was cleared
         assert cleared_count == 1
+        assert storage_keys == []  # No attachments
         db_session.refresh(retrieved_secret)
         assert retrieved_secret.cleared_at is not None
         assert retrieved_secret.ciphertext is None
@@ -137,10 +139,11 @@ class TestClearExpiredSecrets:
         )
 
         # Run the clear function
-        cleared_count = clear_expired_secrets(db_session)
+        cleared_count, storage_keys = clear_expired_secrets(db_session)
 
         # Verify the secret was not cleared
         assert cleared_count == 0
+        assert storage_keys == []
         db_session.refresh(active_secret)
         assert active_secret.cleared_at is None
         assert active_secret.ciphertext is not None
@@ -167,16 +170,18 @@ class TestClearExpiredSecrets:
         )
 
         # Clear it once
-        cleared_count = clear_expired_secrets(db_session)
+        cleared_count, storage_keys = clear_expired_secrets(db_session)
         assert cleared_count == 1
+        assert storage_keys == []
         db_session.refresh(expired_secret)
         first_cleared_at = expired_secret.cleared_at
 
         # Try to clear again
-        cleared_count = clear_expired_secrets(db_session)
+        cleared_count, storage_keys = clear_expired_secrets(db_session)
 
         # Verify nothing was cleared (already processed)
         assert cleared_count == 0
+        assert storage_keys == []
         db_session.refresh(expired_secret)
         assert expired_secret.cleared_at == first_cleared_at
 
