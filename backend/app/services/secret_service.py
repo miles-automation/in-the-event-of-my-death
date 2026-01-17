@@ -227,9 +227,77 @@ def get_secret_status(db: Session, secret: Secret) -> dict:
     }
 
 
-def clear_expired_secrets(db: Session) -> int:
+def get_secrets_needing_cleanup(db: Session) -> list[tuple[str, list[str]]]:
+    """
+    Get secrets that need cleanup along with their attachment storage keys.
+
+    Returns a list of tuples: (secret_id, [storage_keys]).
+    Secrets without attachments will have an empty storage_keys list.
+
+    Only returns secrets that are:
+    - Expired (expires_at <= now), OR
+    - Retrieved (retrieved_at IS NOT NULL)
+    And haven't been cleared yet (cleared_at IS NULL).
+    """
+    from sqlalchemy import or_
+    from sqlalchemy.orm import joinedload
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    secrets = (
+        db.query(Secret)
+        .options(joinedload(Secret.attachments))
+        .filter(
+            Secret.cleared_at == None,  # noqa: E711 - Not already cleared
+            or_(
+                Secret.expires_at <= now,  # Expired
+                Secret.retrieved_at != None,  # noqa: E711 - Retrieved
+            ),
+        )
+        .all()
+    )
+
+    return [(secret.id, [att.storage_key for att in secret.attachments]) for secret in secrets]
+
+
+def clear_secret_and_attachments(db: Session, secret_id: str) -> bool:
+    """
+    Clear a single secret's ciphertext and delete its attachment rows.
+
+    This should only be called AFTER the corresponding S3 blobs have been
+    successfully deleted. The attachment rows are explicitly deleted since
+    we UPDATE (not DELETE) the secret, so CASCADE doesn't trigger.
+
+    Returns True if the secret was cleared, False if not found or already cleared.
+    """
+    from app.models.secret_attachment import SecretAttachment
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    secret = db.query(Secret).filter(Secret.id == secret_id).first()
+    if secret is None or secret.cleared_at is not None:
+        return False
+
+    # Explicitly delete attachment rows (CASCADE won't trigger on UPDATE)
+    db.query(SecretAttachment).filter(SecretAttachment.secret_id == secret_id).delete()
+
+    # Clear the secret's ciphertext
+    secret.ciphertext = None
+    secret.iv = None
+    secret.auth_tag = None
+    secret.cleared_at = now
+
+    db.commit()
+    return True
+
+
+def clear_expired_secrets(db: Session) -> tuple[int, list[str]]:
     """
     Clear secrets' ciphertext while preserving metadata for analytics.
+
+    DEPRECATED: Use get_secrets_needing_cleanup() + clear_secret_and_attachments()
+    for proper blob cleanup. This function is kept for backwards compatibility
+    with secrets that have no attachments.
 
     Clears secrets that are either:
     - Expired (expires_at <= now), OR
@@ -240,7 +308,7 @@ def clear_expired_secrets(db: Session) -> int:
     Sets ciphertext/iv/auth_tag to None and cleared_at to current time.
     Rows are never deleted - metadata is preserved for analytics.
 
-    Returns the count of cleared secrets.
+    Returns a tuple of (count of cleared secrets, empty list for compatibility).
     """
     from sqlalchemy import or_
 
@@ -265,4 +333,4 @@ def clear_expired_secrets(db: Session) -> int:
         )
     )
     db.commit()
-    return result
+    return result, []
