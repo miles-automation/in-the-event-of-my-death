@@ -37,12 +37,12 @@ export function hexToBytes(hex: string): Uint8Array {
  * Uses chunked processing to avoid call stack limits with large arrays.
  */
 export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = ''
+  const chunks: string[] = []
   const chunkSize = 0x8000 // 32KB chunks to stay well within call stack limits
   for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + chunkSize)))
   }
-  return btoa(binary)
+  return btoa(chunks.join(''))
 }
 
 /**
