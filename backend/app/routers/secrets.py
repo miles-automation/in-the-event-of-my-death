@@ -37,9 +37,15 @@ from app.services.secret_service import (
     retrieve_secret,
     update_secret_dates,
 )
+from app.services.storage_service import ObjectStorageService
 
 router = APIRouter()
 logger = structlog.get_logger()
+
+
+def get_storage_service() -> ObjectStorageService:
+    """Get the object storage service instance."""
+    return ObjectStorageService(settings)
 
 
 def extract_bearer_token(authorization: str = Header(...)) -> str:
@@ -166,11 +172,27 @@ async def create_new_secret(
     # Step 5b: Link any pre-uploaded attachments to the secret
     if secret_data.attachment_ids:
         linked_count = link_attachments_to_secret(db, secret.id, secret_data.attachment_ids)
+        if linked_count != len(secret_data.attachment_ids):
+            # All-or-nothing: if not all attachments could be linked, fail the request
+            # This can happen if attachments were deleted, already linked, or don't exist
+            # Clean up: unlink any attachments that were linked and delete the secret
+            from app.models.secret_attachment import SecretAttachment
+
+            db.query(SecretAttachment).filter(SecretAttachment.secret_id == secret.id).update(
+                {"secret_id": None}, synchronize_session=False
+            )
+            db.delete(secret)
+            db.commit()
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to link {len(secret_data.attachment_ids) - linked_count} of "
+                f"{len(secret_data.attachment_ids)} attachments. "
+                "Attachments may have been deleted or already linked to another secret.",
+            )
         logger.info(
             "attachments_linked",
             secret_id=secret.id,
-            requested=len(secret_data.attachment_ids),
-            linked=linked_count,
+            count=linked_count,
         )
 
     # Step 6: Mark PoW challenge or capability token as consumed
@@ -238,12 +260,16 @@ async def retrieve_secret_endpoint(
     request: Request,
     authorization: str = Header(...),
     db: Session = Depends(get_db),
+    storage_service: ObjectStorageService = Depends(get_storage_service),
 ):
     """
     Retrieve a secret's encrypted content.
 
     This is a ONE-TIME operation. After successful retrieval post-unlock,
     the secret is permanently deleted.
+
+    If the secret has attachments and object storage is enabled, presigned
+    download URLs are included in the response. These URLs are valid for 5 minutes.
     """
     decrypt_token = extract_bearer_token(authorization)
 
@@ -288,6 +314,28 @@ async def retrieve_secret_endpoint(
                 "message": result["message"],
             },
         )
+
+    # Generate presigned URLs for attachments
+    # This is done AFTER retrieve_secret marks the secret as retrieved, so
+    # attachments can only be downloaded via these pre-generated URLs
+    if result.get("attachments"):
+        for attachment in result["attachments"]:
+            try:
+                presigned_url = await storage_service.generate_presigned_url(
+                    object_key=attachment["storage_key"],
+                    expires_in=300,  # 5 minutes
+                )
+                attachment["presigned_url"] = presigned_url
+            except Exception as e:
+                logger.error(
+                    "presigned_url_generation_failed",
+                    storage_key=attachment["storage_key"][:20],
+                    error=str(e),
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to generate attachment download URLs",
+                )
 
     logger.info("secret_retrieved", secret_id=secret.id)
     return SecretRetrieveResponse(**result)

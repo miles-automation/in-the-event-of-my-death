@@ -254,6 +254,7 @@ class AttachmentMetadataResponse(BaseModel):
     blob_auth_tag: str  # Base64
     blob_size: int
     position: int
+    presigned_url: str  # Presigned download URL (valid for 5 minutes)
 
 
 class SecretRetrieveResponse(BaseModel):
