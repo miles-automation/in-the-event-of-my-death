@@ -23,7 +23,7 @@ export interface SecretCreateRequest {
   expiry_preset?: '15m' | '1h' | '24h' | '1w' // Server calculates expires_at
   edit_token: string
   decrypt_token: string
-  pow_proof: PowProof
+  pow_proof?: PowProof
 }
 
 export interface SecretCreateResponse {

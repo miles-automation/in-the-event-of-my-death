@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { extractFromFragment } from '../utils/urlFragments'
 import { getSecretStatus, retrieveSecret } from '../services/api'
-import { decrypt } from '../services/crypto'
+import { decryptBytes } from '../services/crypto'
+import { decodeSecretPayload } from '../services/secretPayload'
 
 type State =
   | { type: 'loading' }
@@ -9,7 +10,11 @@ type State =
   | { type: 'pending'; unlockAt: Date; expiresAt?: Date }
   | { type: 'ready' }
   | { type: 'retrieving' }
-  | { type: 'decrypted'; message: string }
+  | {
+      type: 'decrypted'
+      text: string
+      attachments: { name: string; type: string; size: number; url: string }[]
+    }
   | { type: 'already_retrieved' }
   | { type: 'expired' }
   | { type: 'not_found' }
@@ -18,6 +23,13 @@ type State =
 function getInitialParams(): { token: string | null; key: string | null } {
   const { token, key } = extractFromFragment()
   return { token: token || null, key: key || null }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
 export default function ViewSecret() {
@@ -72,6 +84,15 @@ export default function ViewSecret() {
       checkStatus(params.token)
     }
   }, [params.token, checkStatus])
+
+  useEffect(() => {
+    if (state.type !== 'decrypted') return
+    return () => {
+      for (const attachment of state.attachments) {
+        URL.revokeObjectURL(attachment.url)
+      }
+    }
+  }, [state])
 
   // Countdown timer for pending secrets
   useEffect(() => {
@@ -136,7 +157,7 @@ export default function ViewSecret() {
           return
         }
 
-        const decryptedMessage = await decrypt(
+        const decryptedBytes = await decryptBytes(
           {
             ciphertext: result.ciphertext,
             iv: result.iv,
@@ -145,7 +166,22 @@ export default function ViewSecret() {
           params.key,
         )
 
-        setState({ type: 'decrypted', message: decryptedMessage })
+        const decoded = decodeSecretPayload(decryptedBytes)
+        const attachments = decoded.attachments.map((a) => {
+          const buffer = a.bytes.buffer.slice(
+            a.bytes.byteOffset,
+            a.bytes.byteOffset + a.bytes.byteLength,
+          ) as ArrayBuffer
+          const blob = new Blob([buffer], { type: a.type || 'application/octet-stream' })
+          return {
+            name: a.name,
+            type: a.type || 'application/octet-stream',
+            size: a.bytes.length,
+            url: URL.createObjectURL(blob),
+          }
+        })
+
+        setState({ type: 'decrypted', text: decoded.text, attachments })
       }
     } catch (err) {
       setState({
@@ -256,7 +292,25 @@ export default function ViewSecret() {
       <div className="view-secret">
         <h1>Your Secret</h1>
         <div className="secret-content">
-          <pre>{state.message}</pre>
+          {state.text && <pre>{state.text}</pre>}
+          {state.attachments.length > 0 && (
+            <div className="attachments">
+              <h2>Attachments</h2>
+              <ul>
+                {state.attachments.map((a, index) => (
+                  <li key={`${index}-${a.name}-${a.size}`}>
+                    <a href={a.url} download={a.name}>
+                      {a.name}
+                    </a>{' '}
+                    <span className="helper-text">
+                      ({formatBytes(a.size)}
+                      {a.type ? `, ${a.type}` : ''})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="info">
           This secret has been deleted from our servers. Save this message if you need to keep it.

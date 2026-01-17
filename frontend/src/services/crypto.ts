@@ -34,9 +34,15 @@ export function hexToBytes(hex: string): Uint8Array {
 
 /**
  * Convert a Uint8Array to a base64 string.
+ * Uses chunked processing to avoid call stack limits with large arrays.
  */
 export function bytesToBase64(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes))
+  const chunks: string[] = []
+  const chunkSize = 0x8000 // 32KB chunks to stay well within call stack limits
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + chunkSize)))
+  }
+  return btoa(chunks.join(''))
 }
 
 /**
@@ -112,8 +118,28 @@ export async function encrypt(
   iv: Uint8Array,
 ): Promise<EncryptedData> {
   const encoder = new TextEncoder()
-  const plaintextBytes = encoder.encode(plaintext)
+  return encryptBytes(encoder.encode(plaintext), key, iv)
+}
 
+/**
+ * Decrypt ciphertext with AES-256-GCM.
+ */
+export async function decrypt(encryptedData: EncryptedData, keyHex: string): Promise<string> {
+  const decoder = new TextDecoder()
+  const bytes = await decryptBytes(encryptedData, keyHex)
+  return decoder.decode(bytes)
+}
+
+/**
+ * Encrypt bytes with AES-256-GCM.
+ *
+ * Returns the ciphertext and auth tag combined, plus the IV.
+ */
+export async function encryptBytes(
+  plaintextBytes: Uint8Array,
+  key: CryptoKey,
+  iv: Uint8Array,
+): Promise<EncryptedData> {
   const ciphertextWithTag = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
@@ -138,9 +164,12 @@ export async function encrypt(
 }
 
 /**
- * Decrypt ciphertext with AES-256-GCM.
+ * Decrypt bytes with AES-256-GCM.
  */
-export async function decrypt(encryptedData: EncryptedData, keyHex: string): Promise<string> {
+export async function decryptBytes(
+  encryptedData: EncryptedData,
+  keyHex: string,
+): Promise<Uint8Array> {
   const keyBytes = hexToBytes(keyHex)
   const key = await importKey(keyBytes)
 
@@ -163,8 +192,7 @@ export async function decrypt(encryptedData: EncryptedData, keyHex: string): Pro
     toArrayBuffer(combined),
   )
 
-  const decoder = new TextDecoder()
-  return decoder.decode(plaintextBuffer)
+  return new Uint8Array(plaintextBuffer)
 }
 
 /**
@@ -198,6 +226,16 @@ export async function computePayloadHash(encrypted: EncryptedData): Promise<stri
  * This is the main entry point for creating a new secret.
  */
 export async function generateSecret(plaintext: string): Promise<GeneratedSecret> {
+  const encoder = new TextEncoder()
+  return generateSecretFromBytes(encoder.encode(plaintext))
+}
+
+/**
+ * Generate a complete secret with all cryptographic materials from raw bytes.
+ */
+export async function generateSecretFromBytes(
+  plaintextBytes: Uint8Array,
+): Promise<GeneratedSecret> {
   // Generate all random values
   const key = await generateAesKey()
   const keyBytes = await exportKey(key)
@@ -205,8 +243,8 @@ export async function generateSecret(plaintext: string): Promise<GeneratedSecret
   const editToken = generateRandomHex(32)
   const decryptToken = generateRandomHex(32)
 
-  // Encrypt the plaintext
-  const encrypted = await encrypt(plaintext, key, iv)
+  // Encrypt the payload
+  const encrypted = await encryptBytes(plaintextBytes, key, iv)
 
   // Compute payload hash for PoW binding
   const payloadHash = await computePayloadHash(encrypted)

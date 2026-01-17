@@ -65,10 +65,16 @@ export async function requestChallenge(
 /**
  * Create a new secret.
  */
-export async function createSecret(request: SecretCreateRequest): Promise<SecretCreateResponse> {
+export async function createSecret(
+  request: SecretCreateRequest,
+  options?: { capabilityToken?: string },
+): Promise<SecretCreateResponse> {
   const response = await fetch(`${API_BASE}/secrets`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options?.capabilityToken ? { 'X-Capability-Token': options.capabilityToken } : {}),
+    },
     body: JSON.stringify(request),
   })
   return handleResponse<SecretCreateResponse>(response)

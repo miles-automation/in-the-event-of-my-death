@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { generateSecret, base64ToBytes } from '../services/crypto'
+import { generateSecretFromBytes, base64ToBytes } from '../services/crypto'
 import { requestChallenge, createSecret } from '../services/api'
 import { solveChallenge } from '../services/pow'
+import { encodeSecretPayloadV1 } from '../services/secretPayload'
 import { generateShareableLinks } from '../utils/urlFragments'
 import {
   applyDateOffset,
@@ -13,9 +14,19 @@ import type { ShareableLinks } from '../types'
 
 type Step = 'input' | 'processing' | 'done'
 
+const MAX_POW_CIPHERTEXT_BYTES = 1_000_000
+
+// File attachment limits
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024 // 50MB per file
+const MAX_TOTAL_SIZE_BYTES = 100 * 1024 * 1024 // 100MB total
+const MAX_FILES = 10
+
 export default function Home() {
   const [step, setStep] = useState<Step>('input')
   const [message, setMessage] = useState('')
+  const [files, setFiles] = useState<File[]>([])
+  const [capabilityToken, setCapabilityToken] = useState('')
+  const [showCapabilityToken, setShowCapabilityToken] = useState(false)
   const [unlockPreset, setUnlockPreset] = useState<UnlockPreset>('now')
   const [customUnlockDate, setCustomUnlockDate] = useState('')
   const [customUnlockTime, setCustomUnlockTime] = useState('00:00')
@@ -35,8 +46,10 @@ export default function Home() {
   // Dropdown open state
   const [unlockOpen, setUnlockOpen] = useState(false)
   const [expiryOpen, setExpiryOpen] = useState(false)
+  const [dragActive, setDragActive] = useState(false)
   const unlockRef = useRef<HTMLDivElement>(null)
   const expiryRef = useRef<HTMLDivElement>(null)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
 
   // Tick state to trigger re-renders for live time updates
   const [, setTick] = useState(0)
@@ -84,14 +97,20 @@ export default function Home() {
   }
 
   // Check if form is valid
+  const hasContent = message.trim().length > 0 || files.length > 0
   const isValid =
-    message.trim() &&
+    hasContent &&
     (unlockPreset !== 'custom' || (customUnlockDate && customUnlockTime)) &&
     (expiryPreset !== 'custom' || (customExpiryDate && customExpiryTime))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    if (!hasContent) {
+      setError('Please enter a message or attach a file')
+      return
+    }
 
     const unlockAt = getUnlockDate()
     if (!unlockAt) {
@@ -122,22 +141,37 @@ export default function Home() {
     setStep('processing')
 
     try {
-      // Step 1: Generate cryptographic materials
-      setProgress('Encrypting your secret...')
-      const secret = await generateSecret(message)
+      // Step 1: Read attachments and build payload
+      setProgress(files.length > 0 ? 'Preparing attachments...' : 'Preparing your secret...')
+      const attachments = await Promise.all(
+        files.map(async (file) => {
+          try {
+            return {
+              name: file.name,
+              type: file.type || 'application/octet-stream',
+              bytes: new Uint8Array(await file.arrayBuffer()),
+            }
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : 'unknown error'
+            throw new Error(`Failed to read file "${file.name}": ${reason}`)
+          }
+        }),
+      )
 
-      // Step 2: Request PoW challenge
-      setProgress('Requesting proof-of-work challenge...')
-      const ciphertextSize = base64ToBytes(secret.encrypted.ciphertext).length
-      const challenge = await requestChallenge(secret.payloadHash, ciphertextSize)
-
-      // Step 3: Solve PoW
-      setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
-      const powProof = await solveChallenge(challenge, secret.payloadHash, (iterations) => {
-        setProgress(`Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`)
+      const payloadBytes = encodeSecretPayloadV1({
+        text: message,
+        attachments,
       })
 
-      // Step 4: Create secret on server
+      // Step 2: Generate cryptographic materials
+      setProgress('Encrypting your secret...')
+      const secret = await generateSecretFromBytes(payloadBytes)
+
+      const ciphertextSize = base64ToBytes(secret.encrypted.ciphertext).length
+
+      const trimmedCapabilityToken = capabilityToken.trim() || null
+
+      // Step 3: Create secret on server (PoW or capability token)
       setProgress('Storing encrypted secret...')
       const createRequest: Parameters<typeof createSecret>[0] = {
         ciphertext: secret.encrypted.ciphertext,
@@ -145,7 +179,6 @@ export default function Home() {
         auth_tag: secret.encrypted.authTag,
         edit_token: secret.editToken,
         decrypt_token: secret.decryptToken,
-        pow_proof: powProof,
       }
 
       // Send presets for server-calculated times (avoids clock skew), or absolute times for custom
@@ -161,9 +194,33 @@ export default function Home() {
         createRequest.expires_at = expiresAt.toISOString()
       }
 
-      const response = await createSecret(createRequest)
+      const response = trimmedCapabilityToken
+        ? await createSecret(createRequest, { capabilityToken: trimmedCapabilityToken })
+        : await (async () => {
+            if (ciphertextSize > MAX_POW_CIPHERTEXT_BYTES) {
+              throw new Error(
+                'This secret is too large for proof-of-work. Add a capability token to upload larger files.',
+              )
+            }
 
-      // Step 5: Generate shareable links
+            // Request PoW challenge
+            setProgress('Requesting proof-of-work challenge...')
+            const challenge = await requestChallenge(secret.payloadHash, ciphertextSize)
+
+            // Solve PoW
+            setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
+            const powProof = await solveChallenge(challenge, secret.payloadHash, (iterations) => {
+              setProgress(
+                `Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`,
+              )
+            })
+
+            createRequest.pow_proof = powProof
+            setProgress('Storing encrypted secret...')
+            return createSecret(createRequest)
+          })()
+
+      // Step 4: Generate shareable links
       const shareableLinks = generateShareableLinks(
         secret.editToken,
         secret.decryptToken,
@@ -203,6 +260,12 @@ export default function Home() {
   const resetForm = () => {
     setStep('input')
     setMessage('')
+    setFiles([])
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = ''
+    }
+    setCapabilityToken('')
+    setShowCapabilityToken(false)
     setUnlockPreset('now')
     setCustomUnlockDate('')
     setCustomUnlockTime('00:00')
@@ -213,6 +276,77 @@ export default function Home() {
     setCreatedExpiresAt(null)
     setLinks(null)
     setError(null)
+  }
+
+  const openAttachmentPicker = () => {
+    attachmentInputRef.current?.click()
+  }
+
+  const addFiles = (incoming: File[]) => {
+    if (incoming.length === 0) return
+    setError(null)
+
+    // Validate individual file sizes
+    const oversizedFile = incoming.find((f) => f.size > MAX_FILE_SIZE_BYTES)
+    if (oversizedFile) {
+      setError(`File "${oversizedFile.name}" exceeds maximum size of 50MB`)
+      return
+    }
+
+    // Compute merged list (deduplicated) to validate before updating state
+    const merged = [...files]
+    for (const file of incoming) {
+      const key = `${file.name}:${file.size}:${file.lastModified}`
+      const already = merged.some((f) => `${f.name}:${f.size}:${f.lastModified}` === key)
+      if (!already) merged.push(file)
+    }
+
+    // Validate total count
+    if (merged.length > MAX_FILES) {
+      setError(`Maximum ${MAX_FILES} files allowed`)
+      return
+    }
+
+    // Validate total size
+    const totalSize = merged.reduce((sum, f) => sum + f.size, 0)
+    if (totalSize > MAX_TOTAL_SIZE_BYTES) {
+      setError(`Total file size exceeds maximum of 100MB`)
+      return
+    }
+
+    setFiles(merged)
+  }
+
+  const removeFileAt = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Format bytes as human-readable size
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  }
+
+  // Get file type icon based on MIME type
+  const getFileIcon = (mimeType: string): string => {
+    if (mimeType.startsWith('image/')) return '🖼️'
+    if (mimeType.startsWith('audio/')) return '🎵'
+    if (mimeType.startsWith('video/')) return '🎬'
+    if (mimeType === 'application/pdf') return '📄'
+    if (mimeType.startsWith('text/')) return '📝'
+    if (
+      [
+        'application/zip',
+        'application/x-rar-compressed',
+        'application/gzip',
+        'application/x-tar',
+      ].includes(mimeType)
+    )
+      return '📦'
+    return '📎'
   }
 
   if (step === 'processing') {
@@ -334,16 +468,97 @@ export default function Home() {
       <div className="hero-form">
         <p className="hero-title">In The Event Of My Death</p>
         <form onSubmit={handleSubmit} className="inline-form">
-          <div className="message-input-container">
+          <div
+            className={`message-input-container${dragActive ? ' drag-active' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragActive(true)
+            }}
+            onDragLeave={() => setDragActive(false)}
+            onDrop={(e) => {
+              e.preventDefault()
+              setDragActive(false)
+              addFiles(Array.from(e.dataTransfer.files))
+            }}
+          >
             <textarea
               id="message"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Enter your secret message..."
               rows={4}
-              required
               autoFocus
+              aria-required={files.length === 0}
             />
+            <input
+              ref={attachmentInputRef}
+              id="attachments"
+              type="file"
+              multiple
+              className="attach-file-input"
+              onChange={(e) => addFiles(e.target.files ? Array.from(e.target.files) : [])}
+            />
+            <button
+              type="button"
+              className="attach-button-overlay"
+              onClick={openAttachmentPicker}
+              aria-label="Attach files"
+              title="Attach files"
+            >
+              📎
+            </button>
+
+            {files.length > 0 && (
+              <div className="attachment-chips" role="list" aria-label="Attachments">
+                {files.map((file, index) => (
+                  <div
+                    key={`${index}-${file.name}-${file.size}-${file.lastModified}`}
+                    className="attachment-chip"
+                    role="listitem"
+                  >
+                    <span className="attachment-chip-icon" aria-hidden="true">
+                      {getFileIcon(file.type)}
+                    </span>
+                    <span className="attachment-chip-name" title={file.name}>
+                      {file.name}
+                    </span>
+                    <button
+                      type="button"
+                      className="attachment-chip-remove"
+                      onClick={() => removeFileAt(index)}
+                      aria-label={`Remove ${file.name}`}
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <span className="attachment-summary">
+                  {files.length} {files.length === 1 ? 'file' : 'files'} (
+                  {formatBytes(files.reduce((sum, f) => sum + f.size, 0))})
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div className="message-input-container">
+            <button
+              type="button"
+              className="linkish-button"
+              onClick={() => setShowCapabilityToken((s) => !s)}
+            >
+              {showCapabilityToken ? 'Hide capability token' : 'Have a capability token?'}
+            </button>
+            {showCapabilityToken && (
+              <input
+                id="capabilityToken"
+                type="password"
+                autoComplete="off"
+                placeholder="Capability token (optional, for large files)"
+                value={capabilityToken}
+                onChange={(e) => setCapabilityToken(e.target.value)}
+              />
+            )}
           </div>
 
           <button

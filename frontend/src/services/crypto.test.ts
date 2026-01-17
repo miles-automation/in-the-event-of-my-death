@@ -11,9 +11,12 @@ import {
   importKey,
   encrypt,
   decrypt,
+  encryptBytes,
+  decryptBytes,
   sha256,
   computePayloadHash,
   generateSecret,
+  generateSecretFromBytes,
 } from './crypto'
 
 describe('crypto service', () => {
@@ -34,6 +37,20 @@ describe('crypto service', () => {
 
       const decoded = base64ToBytes(base64)
       expect(decoded).toEqual(bytes)
+    })
+
+    it('should handle large byte arrays without stack overflow', () => {
+      // 1MB payload - would overflow with spread operator approach
+      const largeBytes = new Uint8Array(1024 * 1024)
+      for (let i = 0; i < largeBytes.length; i++) {
+        largeBytes[i] = i % 256
+      }
+
+      const base64 = bytesToBase64(largeBytes)
+      expect(base64.length).toBeGreaterThan(0)
+
+      const decoded = base64ToBytes(base64)
+      expect(decoded).toEqual(largeBytes)
     })
   })
 
@@ -91,6 +108,20 @@ describe('crypto service', () => {
 
       const decrypted = await decrypt(encrypted, keyHex)
       expect(decrypted).toBe(plaintext)
+    })
+
+    it('should encrypt and decrypt bytes correctly', async () => {
+      const plaintextBytes = new Uint8Array([0, 1, 2, 255, 254])
+      const key = await generateAesKey()
+      const iv = generateIv()
+
+      const encrypted = await encryptBytes(plaintextBytes, key, iv)
+      expect(encrypted.ciphertext).toBeTruthy()
+
+      const keyBytes = await exportKey(key)
+      const keyHex = bytesToHex(keyBytes)
+      const decryptedBytes = await decryptBytes(encrypted, keyHex)
+      expect(decryptedBytes).toEqual(plaintextBytes)
     })
 
     it('should produce different ciphertext with different IV', async () => {
@@ -174,6 +205,13 @@ describe('crypto service', () => {
 
       const decrypted = await decrypt(secret.encrypted, secret.encryptionKey)
       expect(decrypted).toBe(plaintext)
+    })
+
+    it('should generate secret from bytes', async () => {
+      const bytes = new Uint8Array([1, 2, 3, 4])
+      const secret = await generateSecretFromBytes(bytes)
+      const decrypted = await decryptBytes(secret.encrypted, secret.encryptionKey)
+      expect(decrypted).toEqual(bytes)
     })
 
     it('should generate different tokens and keys each time', async () => {

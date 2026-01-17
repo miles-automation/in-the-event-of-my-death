@@ -89,6 +89,24 @@ a {
   color: var(--accent-hover);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.helper-text {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .app {
   min-height: 100vh;
   display: flex;
@@ -346,6 +364,127 @@ textarea::placeholder {
 /* Message input container */
 .message-input-container {
   position: relative;
+}
+
+/* Hidden file input */
+.attach-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Claude-style overlay attach button */
+.attach-button-overlay {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s,
+    background 0.15s;
+  z-index: 1;
+  font-size: 1rem;
+}
+
+.attach-button-overlay:hover {
+  color: var(--text-primary);
+  background: var(--bg-muted);
+}
+
+.attach-button-overlay:active {
+  background: var(--border-subtle);
+}
+
+/* Drag-over visual feedback */
+.message-input-container.drag-active textarea {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.15);
+}
+
+/* Attachment chips - tighter spacing */
+.attachment-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-muted);
+  padding: 4px 8px;
+  border-radius: 16px;
+  max-width: 100%;
+  font-size: 0.8125rem;
+}
+
+.attachment-chip-icon {
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.attachment-chip-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+
+.attachment-chip-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.attachment-chip-remove:hover {
+  color: var(--text-primary);
+}
+
+.attachment-summary {
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  align-self: center;
+  margin-left: 4px;
+}
+
+.linkish-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--accent-hover);
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  margin-top: 0.5rem;
+}
+
+.linkish-button:hover {
+  color: var(--text-primary);
 }
 
 /* Send button below textarea */
@@ -996,6 +1135,20 @@ input[type='email']:focus {
   word-wrap: break-word;
   font-family: inherit;
   color: var(--text-primary);
+}
+
+.attachments h2 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.attachments ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.attachments li {
+  margin: 0.25rem 0;
 }
 
 /* Edit secret */
