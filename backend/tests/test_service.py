@@ -9,9 +9,11 @@ import pytest
 from app.services.secret_service import (
     TOKEN_PREFIX_LENGTH,
     clear_expired_secrets,
+    clear_secret_and_attachments,
     create_secret,
     find_secret_by_decrypt_token,
     find_secret_by_edit_token,
+    get_secrets_needing_cleanup,
     get_token_prefix,
     retrieve_secret,
 )
@@ -412,3 +414,160 @@ class TestRetrieveSecret:
 
         result = retrieve_secret(db_session, secret)
         assert result["status"] == "expired"
+
+
+class TestAttachmentCleanup:
+    """Tests for attachment-aware cleanup functions."""
+
+    def test_get_secrets_needing_cleanup_expired(self, db_session, sample_tokens):
+        """Test that expired secrets are returned for cleanup."""
+        iv = base64.b64encode(secrets.token_bytes(12)).decode()
+        auth_tag = base64.b64encode(secrets.token_bytes(16)).decode()
+        ciphertext = base64.b64encode(secrets.token_bytes(100)).decode()
+
+        # Create an expired secret
+        expired_secret = create_secret(
+            db=db_session,
+            ciphertext_b64=ciphertext,
+            iv_b64=iv,
+            auth_tag_b64=auth_tag,
+            unlock_at=utcnow() + timedelta(hours=1),
+            edit_token=sample_tokens["edit_token"],
+            decrypt_token=sample_tokens["decrypt_token"],
+            expires_at=utcnow() - timedelta(hours=1),
+        )
+
+        result = get_secrets_needing_cleanup(db_session)
+
+        assert len(result) == 1
+        secret_id, storage_keys = result[0]
+        assert secret_id == expired_secret.id
+        assert storage_keys == []  # No attachments
+
+    def test_get_secrets_needing_cleanup_with_attachment(self, db_session, sample_tokens):
+        """Test that secrets with attachments return their storage keys."""
+        from app.models.secret_attachment import SecretAttachment
+
+        iv = base64.b64encode(secrets.token_bytes(12)).decode()
+        auth_tag = base64.b64encode(secrets.token_bytes(16)).decode()
+        ciphertext = base64.b64encode(secrets.token_bytes(100)).decode()
+
+        # Create an expired secret
+        expired_secret = create_secret(
+            db=db_session,
+            ciphertext_b64=ciphertext,
+            iv_b64=iv,
+            auth_tag_b64=auth_tag,
+            unlock_at=utcnow() + timedelta(hours=1),
+            edit_token=sample_tokens["edit_token"],
+            decrypt_token=sample_tokens["decrypt_token"],
+            expires_at=utcnow() - timedelta(hours=1),
+        )
+
+        # Add an attachment
+        attachment = SecretAttachment(
+            secret_id=expired_secret.id,
+            storage_key="test-bucket/secrets/test-key-123",
+            encrypted_metadata=b"encrypted_metadata",
+            metadata_iv=secrets.token_bytes(12),
+            metadata_auth_tag=secrets.token_bytes(16),
+            blob_iv=secrets.token_bytes(12),
+            blob_auth_tag=secrets.token_bytes(16),
+            blob_size=1024,
+            position=0,
+        )
+        db_session.add(attachment)
+        db_session.commit()
+
+        result = get_secrets_needing_cleanup(db_session)
+
+        assert len(result) == 1
+        secret_id, storage_keys = result[0]
+        assert secret_id == expired_secret.id
+        assert storage_keys == ["test-bucket/secrets/test-key-123"]
+
+    def test_clear_secret_and_attachments_deletes_attachment_rows(self, db_session, sample_tokens):
+        """Test that clearing a secret also deletes its attachment rows."""
+        from app.models.secret_attachment import SecretAttachment
+
+        iv = base64.b64encode(secrets.token_bytes(12)).decode()
+        auth_tag = base64.b64encode(secrets.token_bytes(16)).decode()
+        ciphertext = base64.b64encode(secrets.token_bytes(100)).decode()
+
+        # Create an expired secret
+        expired_secret = create_secret(
+            db=db_session,
+            ciphertext_b64=ciphertext,
+            iv_b64=iv,
+            auth_tag_b64=auth_tag,
+            unlock_at=utcnow() + timedelta(hours=1),
+            edit_token=sample_tokens["edit_token"],
+            decrypt_token=sample_tokens["decrypt_token"],
+            expires_at=utcnow() - timedelta(hours=1),
+        )
+
+        # Add an attachment
+        attachment = SecretAttachment(
+            secret_id=expired_secret.id,
+            storage_key="test-bucket/secrets/test-key-456",
+            encrypted_metadata=b"encrypted_metadata",
+            metadata_iv=secrets.token_bytes(12),
+            metadata_auth_tag=secrets.token_bytes(16),
+            blob_iv=secrets.token_bytes(12),
+            blob_auth_tag=secrets.token_bytes(16),
+            blob_size=2048,
+            position=0,
+        )
+        db_session.add(attachment)
+        db_session.commit()
+
+        # Verify attachment exists
+        assert (
+            db_session.query(SecretAttachment)
+            .filter(SecretAttachment.secret_id == expired_secret.id)
+            .count()
+            == 1
+        )
+
+        # Clear the secret
+        result = clear_secret_and_attachments(db_session, expired_secret.id)
+
+        assert result is True
+
+        # Verify secret is cleared
+        db_session.refresh(expired_secret)
+        assert expired_secret.cleared_at is not None
+        assert expired_secret.ciphertext is None
+
+        # Verify attachment row is deleted
+        assert (
+            db_session.query(SecretAttachment)
+            .filter(SecretAttachment.secret_id == expired_secret.id)
+            .count()
+            == 0
+        )
+
+    def test_clear_secret_and_attachments_already_cleared(self, db_session, sample_tokens):
+        """Test that already-cleared secrets return False."""
+        iv = base64.b64encode(secrets.token_bytes(12)).decode()
+        auth_tag = base64.b64encode(secrets.token_bytes(16)).decode()
+        ciphertext = base64.b64encode(secrets.token_bytes(100)).decode()
+
+        expired_secret = create_secret(
+            db=db_session,
+            ciphertext_b64=ciphertext,
+            iv_b64=iv,
+            auth_tag_b64=auth_tag,
+            unlock_at=utcnow() + timedelta(hours=1),
+            edit_token=sample_tokens["edit_token"],
+            decrypt_token=sample_tokens["decrypt_token"],
+            expires_at=utcnow() - timedelta(hours=1),
+        )
+
+        # Clear once
+        result1 = clear_secret_and_attachments(db_session, expired_secret.id)
+        assert result1 is True
+
+        # Try to clear again
+        result2 = clear_secret_and_attachments(db_session, expired_secret.id)
+        assert result2 is False

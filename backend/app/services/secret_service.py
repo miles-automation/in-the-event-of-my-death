@@ -227,22 +227,26 @@ def get_secret_status(db: Session, secret: Secret) -> dict:
     }
 
 
-def get_attachment_keys_for_cleanup(db: Session) -> list[str]:
+def get_secrets_needing_cleanup(db: Session) -> list[tuple[str, list[str]]]:
     """
-    Get storage keys for attachments belonging to secrets that are about to be cleared.
+    Get secrets that need cleanup along with their attachment storage keys.
 
-    These are attachments for secrets that are expired or retrieved but not yet cleared.
-    The caller should delete these from object storage before/after clearing the secrets.
+    Returns a list of tuples: (secret_id, [storage_keys]).
+    Secrets without attachments will have an empty storage_keys list.
+
+    Only returns secrets that are:
+    - Expired (expires_at <= now), OR
+    - Retrieved (retrieved_at IS NOT NULL)
+    And haven't been cleared yet (cleared_at IS NULL).
     """
     from sqlalchemy import or_
-
-    from app.models.secret_attachment import SecretAttachment
+    from sqlalchemy.orm import joinedload
 
     now = datetime.now(UTC).replace(tzinfo=None)
 
-    # Get secrets that will be cleared
-    secrets_to_clear = (
-        db.query(Secret.id)
+    secrets = (
+        db.query(Secret)
+        .options(joinedload(Secret.attachments))
         .filter(
             Secret.cleared_at == None,  # noqa: E711 - Not already cleared
             or_(
@@ -250,22 +254,50 @@ def get_attachment_keys_for_cleanup(db: Session) -> list[str]:
                 Secret.retrieved_at != None,  # noqa: E711 - Retrieved
             ),
         )
-        .subquery()
-    )
-
-    # Get storage keys for attachments of those secrets
-    attachment_keys = (
-        db.query(SecretAttachment.storage_key)
-        .filter(SecretAttachment.secret_id.in_(db.query(secrets_to_clear.c.id)))
         .all()
     )
 
-    return [key[0] for key in attachment_keys]
+    return [(secret.id, [att.storage_key for att in secret.attachments]) for secret in secrets]
+
+
+def clear_secret_and_attachments(db: Session, secret_id: str) -> bool:
+    """
+    Clear a single secret's ciphertext and delete its attachment rows.
+
+    This should only be called AFTER the corresponding S3 blobs have been
+    successfully deleted. The attachment rows are explicitly deleted since
+    we UPDATE (not DELETE) the secret, so CASCADE doesn't trigger.
+
+    Returns True if the secret was cleared, False if not found or already cleared.
+    """
+    from app.models.secret_attachment import SecretAttachment
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+
+    secret = db.query(Secret).filter(Secret.id == secret_id).first()
+    if secret is None or secret.cleared_at is not None:
+        return False
+
+    # Explicitly delete attachment rows (CASCADE won't trigger on UPDATE)
+    db.query(SecretAttachment).filter(SecretAttachment.secret_id == secret_id).delete()
+
+    # Clear the secret's ciphertext
+    secret.ciphertext = None
+    secret.iv = None
+    secret.auth_tag = None
+    secret.cleared_at = now
+
+    db.commit()
+    return True
 
 
 def clear_expired_secrets(db: Session) -> tuple[int, list[str]]:
     """
     Clear secrets' ciphertext while preserving metadata for analytics.
+
+    DEPRECATED: Use get_secrets_needing_cleanup() + clear_secret_and_attachments()
+    for proper blob cleanup. This function is kept for backwards compatibility
+    with secrets that have no attachments.
 
     Clears secrets that are either:
     - Expired (expires_at <= now), OR
@@ -275,17 +307,12 @@ def clear_expired_secrets(db: Session) -> tuple[int, list[str]]:
 
     Sets ciphertext/iv/auth_tag to None and cleared_at to current time.
     Rows are never deleted - metadata is preserved for analytics.
-    Attachments are cascade-deleted via foreign key.
 
-    Returns a tuple of (count of cleared secrets, list of storage keys to delete).
-    The caller should delete those storage keys from object storage.
+    Returns a tuple of (count of cleared secrets, empty list for compatibility).
     """
     from sqlalchemy import or_
 
     now = datetime.now(UTC).replace(tzinfo=None)
-
-    # Get attachment storage keys BEFORE clearing (they'll be cascade-deleted)
-    storage_keys = get_attachment_keys_for_cleanup(db)
 
     result = (
         db.query(Secret)
@@ -306,4 +333,4 @@ def clear_expired_secrets(db: Session) -> tuple[int, list[str]]:
         )
     )
     db.commit()
-    return result, storage_keys
+    return result, []

@@ -42,9 +42,9 @@ def upgrade() -> None:
         sa.Column("blob_auth_tag", sa.LargeBinary(16), nullable=False),
         sa.Column("blob_size", sa.Integer, nullable=False),
         # Ordering
-        sa.Column("position", sa.Integer, nullable=False, default=0),
+        sa.Column("position", sa.Integer, nullable=False, server_default="0"),
         # Timestamps
-        sa.Column("created_at", sa.DateTime, nullable=False),
+        sa.Column("created_at", sa.DateTime, nullable=False, server_default=sa.func.now()),
     )
 
     # Indexes
