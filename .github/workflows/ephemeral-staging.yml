@@ -243,6 +243,14 @@ jobs:
 
       - name: Smoke test
         run: |
+          echo "Waiting for /health to become healthy..."
+          for i in $(seq 1 90); do
+            response=$(curl -sS --fail-with-body "https://${{ steps.ip.outputs.host }}/health" 2>/dev/null) || { sleep 4; continue; }
+            if echo "$response" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)'; then
+              break
+            fi
+            sleep 4
+          done
           python3 scripts/smoke-test.py "https://${{ steps.ip.outputs.host }}"
 
       - name: Summary
