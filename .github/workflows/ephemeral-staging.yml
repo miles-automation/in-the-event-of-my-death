@@ -1,6 +1,9 @@
 name: Deploy (Ephemeral Staging)
 
 on:
+  push:
+    branches:
+      - feature/203-ephemeral-staging
   workflow_dispatch:
     inputs:
       ref:
@@ -37,6 +40,15 @@ permissions:
   contents: read
   packages: write
 
+env:
+  DEPLOY_REF: ${{ github.event.inputs.ref || github.sha }}
+  REGION: ${{ github.event.inputs.region || 'nyc3' }}
+  SIZE: ${{ github.event.inputs.size || 's-1vcpu-1gb' }}
+  IMAGE: ${{ github.event.inputs.image || 'ubuntu-24-04-x64' }}
+  VPC_UUID: ${{ github.event.inputs.vpc_uuid || '8116bba4-063f-415f-ad8d-12a13bb8b2bd' }}
+  TTL_MINUTES: ${{ github.event.inputs.ttl_minutes || '180' }}
+  DESTROY_WHEN_DONE: ${{ github.event.inputs.destroy_when_done || 'true' }}
+
 concurrency:
   group: ephemeral-staging-${{ github.ref }}
   cancel-in-progress: false
@@ -53,7 +65,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ env.DEPLOY_REF }}
 
       - name: Compute image tag
         id: meta
@@ -96,7 +108,7 @@ jobs:
       - name: Summary
         run: |
           echo "## Ephemeral staging images" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Ref:** \`${{ inputs.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Ref:** \`${{ env.DEPLOY_REF }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Commit:** \`${{ steps.meta.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Backend:** \`${{ steps.tags.outputs.backend_image }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Web:** \`${{ steps.tags.outputs.web_image }}\`" >> "$GITHUB_STEP_SUMMARY"
@@ -117,7 +129,7 @@ jobs:
           chmod 600 ./ephemeral_staging_key
 
       - name: Upload SSH key artifact (when keeping droplet)
-        if: ${{ !inputs.destroy_when_done }}
+        if: ${{ env.DESTROY_WHEN_DONE != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: ephemeral-staging-ssh-key
@@ -138,10 +150,10 @@ jobs:
         run: |
           name="ieomd-ephemeral-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           droplet_id="$(doctl compute droplet create "$name" \
-            --region "${{ inputs.region }}" \
-            --size "${{ inputs.size }}" \
-            --image "${{ inputs.image }}" \
-            --vpc-uuid "${{ inputs.vpc_uuid }}" \
+            --region "${{ env.REGION }}" \
+            --size "${{ env.SIZE }}" \
+            --image "${{ env.IMAGE }}" \
+            --vpc-uuid "${{ env.VPC_UUID }}" \
             --ssh-keys "${{ steps.do_ssh_key.outputs.id }}" \
             --tag-names "ieomd,staging,ephemeral-staging,run-${GITHUB_RUN_ID}" \
             --format ID \
@@ -221,7 +233,7 @@ EOF
 
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ env.DEPLOY_REF }}
 
       - name: Smoke test
         run: |
@@ -233,10 +245,10 @@ EOF
           echo "- **URL:** https://${{ steps.ip.outputs.host }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Droplet ID:** \`${{ steps.droplet.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Temporary DO SSH key ID:** \`${{ steps.do_ssh_key.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Region/size:** \`${{ inputs.region }}\` / \`${{ inputs.size }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **TTL minutes:** \`${{ inputs.ttl_minutes }}\` (cleanup job is the backstop)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Destroy when done:** \`${{ inputs.destroy_when_done }}\`" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${{ inputs.destroy_when_done }}" != "true" ]]; then
+          echo "- **Region/size:** \`${{ env.REGION }}\` / \`${{ env.SIZE }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **TTL minutes:** \`${{ env.TTL_MINUTES }}\` (cleanup job is the backstop)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destroy when done:** \`${{ env.DESTROY_WHEN_DONE }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ env.DESTROY_WHEN_DONE }}" != "true" ]]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "### Manual cleanup" >> "$GITHUB_STEP_SUMMARY"
             echo "- \`doctl compute droplet delete --force ${{ steps.droplet.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
@@ -249,19 +261,19 @@ EOF
           fi
 
       - name: Cleanup (destroy droplet)
-        if: ${{ always() && inputs.destroy_when_done }}
+        if: ${{ always() && env.DESTROY_WHEN_DONE == 'true' }}
         continue-on-error: true
         run: |
           doctl compute droplet delete --force "${{ steps.droplet.outputs.id }}"
 
       - name: Cleanup (delete firewall)
-        if: ${{ always() && inputs.destroy_when_done && steps.firewall.outputs.id != '' }}
+        if: ${{ always() && env.DESTROY_WHEN_DONE == 'true' && steps.firewall.outputs.id != '' }}
         continue-on-error: true
         run: |
           doctl compute firewall delete --force "${{ steps.firewall.outputs.id }}"
 
       - name: Cleanup (delete DO SSH key)
-        if: ${{ always() && inputs.destroy_when_done }}
+        if: ${{ always() && env.DESTROY_WHEN_DONE == 'true' }}
         continue-on-error: true
         run: |
           doctl compute ssh-key delete --force "${{ steps.do_ssh_key.outputs.id }}"
