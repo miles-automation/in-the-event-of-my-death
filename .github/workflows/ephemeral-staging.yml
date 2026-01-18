@@ -214,34 +214,38 @@ jobs:
             deploy/docker-compose.yml deploy/remote/ieomd-deploy \
             "root@${ip}:/tmp/"
 
-          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
-            "set -euo pipefail
-             export DEBIAN_FRONTEND=noninteractive
-             if command -v cloud-init >/dev/null 2>&1; then
-               cloud-init status --wait || true
-             fi
-             apt-get update
-             apt-get install -y --no-install-recommends ca-certificates curl docker.io docker-compose-v2 openssl
-             systemctl enable --now docker
+          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
+            "root@${ip}" \
+            "HOST='${host}' GHCR_OWNER='${GITHUB_REPOSITORY_OWNER}' BACKEND_IMAGE='${backend_image}' WEB_IMAGE='${web_image}' bash -se" <<'EOF'
+          set -euo pipefail
+          export DEBIAN_FRONTEND=noninteractive
 
-             mkdir -p /opt/ieomd /var/lib/ieomd /var/backups/ieomd
-             mv /tmp/docker-compose.yml /opt/ieomd/docker-compose.yml
-             mv /tmp/ieomd-deploy /usr/local/bin/ieomd-deploy
-             chmod +x /usr/local/bin/ieomd-deploy
+          if command -v cloud-init >/dev/null 2>&1; then
+            cloud-init status --wait || true
+          fi
 
-             internal_api_key=\"$(openssl rand -hex 32)\"
-             printf '%s\n' \
-               \"SITE_HOST=${host}\" \
-               \"SITE_ADDRESS=http://${host}\" \
-               \"CORS_ORIGINS=http://${host}\" \
-               \"DATA_DIR=/var/lib/ieomd\" \
-               \"DATABASE_URL=sqlite:////data/secrets-staging.db\" \
-               \"GHCR_OWNER=${GITHUB_REPOSITORY_OWNER}\" \
-               \"INTERNAL_API_KEY=${internal_api_key}\" \
-               > /opt/ieomd/.env
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl docker.io docker-compose-v2 openssl
+          systemctl enable --now docker
 
-             /usr/local/bin/ieomd-deploy deploy --dir /opt/ieomd --backend-image ${backend_image} --web-image ${web_image}
-            "
+          mkdir -p /opt/ieomd /var/lib/ieomd /var/backups/ieomd
+          mv /tmp/docker-compose.yml /opt/ieomd/docker-compose.yml
+          mv /tmp/ieomd-deploy /usr/local/bin/ieomd-deploy
+          chmod +x /usr/local/bin/ieomd-deploy
+
+          internal_api_key="$(openssl rand -hex 32)"
+          printf '%s\n' \
+            "SITE_HOST=${HOST}" \
+            "SITE_ADDRESS=http://${HOST}" \
+            "CORS_ORIGINS=http://${HOST}" \
+            "DATA_DIR=/var/lib/ieomd" \
+            "DATABASE_URL=sqlite:////data/secrets-staging.db" \
+            "GHCR_OWNER=${GHCR_OWNER}" \
+            "INTERNAL_API_KEY=${internal_api_key}" \
+            > /opt/ieomd/.env
+
+          /usr/local/bin/ieomd-deploy deploy --dir /opt/ieomd --backend-image "${BACKEND_IMAGE}" --web-image "${WEB_IMAGE}"
+EOF
 
       - name: Smoke test
         run: |
