@@ -25,8 +25,8 @@ class SecretAttachment(Base):
     __tablename__ = "secret_attachments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    secret_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("secrets.id", ondelete="CASCADE"), nullable=False, index=True
+    secret_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("secrets.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     # Object storage location
@@ -50,5 +50,5 @@ class SecretAttachment(Base):
         DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
     )
 
-    # Relationship back to Secret
-    secret: Mapped["Secret"] = relationship("Secret", back_populates="attachments")
+    # Relationship back to Secret (optional - None for orphaned uploads)
+    secret: Mapped["Secret | None"] = relationship("Secret", back_populates="attachments")

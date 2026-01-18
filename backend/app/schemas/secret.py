@@ -57,6 +57,7 @@ class SecretCreate(BaseModel):
     edit_token: str = Field(..., min_length=64, max_length=64, description="Hex token")
     decrypt_token: str = Field(..., min_length=64, max_length=64, description="Hex token")
     pow_proof: PowProof | None = None  # Optional when using capability token
+    attachment_ids: list[str] | None = None  # IDs of pre-uploaded attachments
 
     @field_validator("ciphertext")
     @classmethod
@@ -242,6 +243,20 @@ class SecretIdStatusResponse(BaseModel):
     expires_at: UTCDateTime
 
 
+class AttachmentMetadataResponse(BaseModel):
+    """Attachment metadata returned when retrieving a secret."""
+
+    storage_key: str
+    encrypted_metadata: str  # Base64
+    metadata_iv: str  # Base64
+    metadata_auth_tag: str  # Base64
+    blob_iv: str  # Base64
+    blob_auth_tag: str  # Base64
+    blob_size: int
+    position: int
+    presigned_url: str  # Presigned download URL (valid for 5 minutes)
+
+
 class SecretRetrieveResponse(BaseModel):
     status: str
     ciphertext: str | None = None
@@ -250,3 +265,4 @@ class SecretRetrieveResponse(BaseModel):
     unlock_at: UTCDateTime | None = None
     retrieved_at: UTCDateTime | None = None
     message: str | None = None
+    attachments: list[AttachmentMetadataResponse] | None = None

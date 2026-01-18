@@ -24,6 +24,7 @@ export interface SecretCreateRequest {
   edit_token: string
   decrypt_token: string
   pow_proof?: PowProof
+  attachment_ids?: string[] // IDs of pre-uploaded attachments
 }
 
 export interface SecretCreateResponse {
@@ -40,6 +41,18 @@ export interface SecretStatusResponse {
   expires_at?: string
 }
 
+export interface AttachmentMetadata {
+  storage_key: string
+  encrypted_metadata: string // Base64
+  metadata_iv: string // Base64
+  metadata_auth_tag: string // Base64
+  blob_iv: string // Base64
+  blob_auth_tag: string // Base64
+  blob_size: number
+  position: number
+  presigned_url: string // Presigned S3 URL (valid for 5 minutes)
+}
+
 export interface SecretRetrieveResponse {
   status: string
   ciphertext?: string
@@ -49,6 +62,22 @@ export interface SecretRetrieveResponse {
   expires_at?: string
   retrieved_at?: string
   message?: string
+  attachments?: AttachmentMetadata[]
+}
+
+export interface AttachmentUploadRequest {
+  encrypted_blob: string // Base64
+  blob_iv: string // Base64
+  blob_auth_tag: string // Base64
+  encrypted_metadata: string // Base64
+  metadata_iv: string // Base64
+  metadata_auth_tag: string // Base64
+  position: number
+}
+
+export interface AttachmentUploadResponse {
+  storage_key: string
+  attachment_id: string
 }
 
 export interface EncryptedData {
