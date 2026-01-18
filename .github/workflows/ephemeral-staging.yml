@@ -245,7 +245,7 @@ jobs:
             > /opt/ieomd/.env
 
           /usr/local/bin/ieomd-deploy deploy --dir /opt/ieomd --backend-image "${BACKEND_IMAGE}" --web-image "${WEB_IMAGE}"
-EOF
+          EOF
 
       - name: Smoke test
         run: |
