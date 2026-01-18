@@ -246,14 +246,46 @@ jobs:
       - name: Smoke test
         run: |
           echo "Waiting for /health to become healthy..."
+          base="${{ steps.ip.outputs.url }}"
+          last_code=""
+          last_body=""
+          ready="0"
           for i in $(seq 1 90); do
-            response=$(curl -sS --fail-with-body "${{ steps.ip.outputs.url }}/health" 2>/dev/null) || { sleep 4; continue; }
-            if echo "$response" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)'; then
+            raw="$(curl -sS -m 10 "${base}/health" -w '\nHTTP_STATUS:%{http_code}\n' || true)"
+            last_code="$(printf '%s' "$raw" | sed -n 's/^HTTP_STATUS://p' | tail -n 1)"
+            last_body="$(printf '%s' "$raw" | sed '/^HTTP_STATUS:/d')"
+            if [[ "$last_code" == "200" ]] && echo "$last_body" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)' 2>/dev/null; then
+              ready="1"
               break
             fi
             sleep 4
           done
+          if [[ "$ready" != "1" ]]; then
+            echo "Health never became healthy (last_code=${last_code})" >&2
+            echo "Body preview:" >&2
+            printf '%s' "$last_body" | head -c 400 >&2 || true
+            echo "" >&2
+            exit 1
+          fi
           python3 scripts/smoke-test.py "${{ steps.ip.outputs.url }}"
+
+      - name: Diagnostics (on failure)
+        if: ${{ failure() }}
+        continue-on-error: true
+        run: |
+          ip="${{ steps.ip.outputs.ip }}"
+          echo "=== remote docker compose ps ==="
+          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
+            "cd /opt/ieomd && docker compose ps || true"
+          echo "=== remote backend logs (tail) ==="
+          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
+            "cd /opt/ieomd && docker compose logs --no-color --tail 200 backend || true"
+          echo "=== remote web logs (tail) ==="
+          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
+            "cd /opt/ieomd && docker compose logs --no-color --tail 200 web || true"
+          echo "=== remote curl localhost health ==="
+          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
+            "curl -sS -m 5 -v http://127.0.0.1/health || true"
 
       - name: Summary
         run: |
