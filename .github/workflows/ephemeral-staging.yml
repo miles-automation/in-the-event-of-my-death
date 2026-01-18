@@ -219,13 +219,6 @@ jobs:
              if command -v cloud-init >/dev/null 2>&1; then
                cloud-init status --wait || true
              fi
-             for i in $(seq 1 60); do
-               if fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/dpkg/lock >/dev/null 2>&1; then
-                 sleep 2
-                 continue
-               fi
-               break
-             done
              apt-get update
              apt-get install -y --no-install-recommends ca-certificates curl docker.io docker-compose-v2 openssl
              systemctl enable --now docker
