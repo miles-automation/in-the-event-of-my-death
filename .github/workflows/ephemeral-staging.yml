@@ -237,7 +237,7 @@ jobs:
           printf '%s\n' \
             "SITE_HOST=${HOST}" \
             "SITE_ADDRESS=http://${HOST}" \
-            "CORS_ORIGINS=[\"http://${HOST}\"]" \
+            "CORS_ORIGINS='[\"http://${HOST}\"]'" \
             "DATA_DIR=/var/lib/ieomd" \
             "DATABASE_URL=sqlite:////data/secrets-staging.db" \
             "GHCR_OWNER=${GHCR_OWNER}" \
