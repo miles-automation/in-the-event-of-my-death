@@ -1,0 +1,73 @@
+name: Cleanup (Ephemeral Staging)
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, off-peak
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Delete ephemeral staging droplets older than this"
+        required: true
+        default: "24"
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      MAX_AGE_HOURS: ${{ github.event.inputs.max_age_hours || '24' }}
+    steps:
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+
+      - name: List droplets
+        run: |
+          doctl compute droplet list --tag-name "ephemeral-staging" --output json > droplets.json
+          echo "Found $(python3 -c 'import json; print(len(json.load(open(\"droplets.json\"))))') droplets tagged ephemeral-staging"
+
+      - name: Select droplets to delete
+        id: select
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone, timedelta
+
+          with open("droplets.json", "r", encoding="utf-8") as f:
+            droplets = json.load(f)
+
+          max_age_hours = float(os.environ.get("MAX_AGE_HOURS", "24"))
+          cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
+
+          to_delete = []
+          for d in droplets:
+            created_at = d.get("created_at")
+            if not created_at:
+              continue
+            created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+            if created <= cutoff:
+              to_delete.append(str(d["id"]))
+
+          with open("droplet_ids.txt", "w", encoding="utf-8") as out:
+            out.write("\n".join(to_delete))
+
+          print(f"Eligible for deletion: {len(to_delete)} (cutoff={cutoff.isoformat()})")
+          PY
+
+          ids="$(tr '\n' ' ' < droplet_ids.txt | xargs || true)"
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
+
+      - name: Delete droplets
+        if: ${{ steps.select.outputs.ids != '' }}
+        run: |
+          echo "Deleting droplet IDs: ${{ steps.select.outputs.ids }}"
+          doctl compute droplet delete --force ${{ steps.select.outputs.ids }}
+
+      - name: Summary
+        run: |
+          echo "## Ephemeral staging cleanup" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Deleted IDs:** \`${{ steps.select.outputs.ids || 'none' }}\`" >> "$GITHUB_STEP_SUMMARY"

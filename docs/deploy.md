@@ -48,10 +48,12 @@ Recommended approach:
 
 ## GitHub Actions secrets
 
-You’ll need repository secrets for staging and production:
+You’ll need repository secrets for production, and for ephemeral staging (recommended).
 
-- `STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_KNOWN_HOSTS`
-- `STAGING_SITE_HOST` (e.g. `staging.ieomd.com`)
+- `DO_API_TOKEN` (DigitalOcean API token; required for ephemeral staging workflows)
+- Legacy always-on staging droplet (optional):
+  - `STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_KNOWN_HOSTS`
+  - `STAGING_SITE_HOST` (e.g. `staging.ieomd.com`)
 - `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY`, `PROD_SSH_KNOWN_HOSTS`
 - `PROD_SITE_HOST` (e.g. `ieomd.com`)
 
@@ -66,8 +68,31 @@ The droplet must be able to pull images from GHCR:
 
 ## Deployment workflows
 
-- Staging deploy runs automatically on merge to `main` (after checks and image build).
-- Production deploy is manual and gated by GitHub Environments approval.
+- Ephemeral staging deploy is manual (workflow dispatch) and should be destroyed after use:
+  - `.github/workflows/ephemeral-staging.yml`
+  - Backstop cleanup: `.github/workflows/cleanup-ephemeral-staging.yml`
+- Legacy always-on staging droplet deploy is manual:
+  - `.github/workflows/build-and-deploy-staging.yml`
+- Production deploy is manual and gated by GitHub Environments approval:
+  - `.github/workflows/promote-to-production.yml` (version bump + deploy)
+  - `.github/workflows/deploy-production.yml` (deploy an existing tag)
+
+## Ephemeral staging (recommended)
+
+For a low-cost staging environment that only runs when needed, use the GitHub Actions workflow:
+
+- `.github/workflows/ephemeral-staging.yml`
+
+It will:
+1. Build and push backend/web images tagged with the workflow run.
+2. Create a short-lived DigitalOcean droplet (same baseline as prod/staging: Ubuntu 24.04, `s-1vcpu-1gb` in `nyc3`).
+3. Deploy using `/usr/local/bin/ieomd-deploy` (includes SQLite backup-before-migrate).
+4. Run `scripts/smoke-test.py` against the deployed site.
+5. Destroy the droplet (default) and delete the temporary DigitalOcean SSH key.
+
+Notes:
+- The workflow uses a temporary hostname `https://<ip>.sslip.io` to avoid managing DNS for ephemeral runs.
+- A scheduled backstop cleanup exists in `.github/workflows/cleanup-ephemeral-staging.yml` to delete any stray droplets tagged `ephemeral-staging`.
 
 ## SQLite migration + rollback
 
