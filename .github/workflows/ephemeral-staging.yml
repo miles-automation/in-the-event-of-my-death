@@ -121,6 +121,10 @@ jobs:
     needs: build_images
     environment: staging
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
@@ -233,10 +237,6 @@ jobs:
 
              /usr/local/bin/ieomd-deploy deploy --dir /opt/ieomd --backend-image ${backend_image} --web-image ${web_image}
             "
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_REF }}
 
       - name: Smoke test
         run: |
