@@ -88,20 +88,6 @@ class AttachmentUploadResponse(BaseModel):
     attachment_id: str
 
 
-class AttachmentUrlRequest(BaseModel):
-    """Request to get a presigned URL for downloading an attachment."""
-
-    # No body needed - storage_key comes from path, auth from header
-    pass
-
-
-class AttachmentUrlResponse(BaseModel):
-    """Response containing a presigned URL for downloading an attachment."""
-
-    presigned_url: str
-    expires_in: int = Field(default=300, description="URL expiry time in seconds")
-
-
 class AttachmentMetadata(BaseModel):
     """Attachment metadata returned when retrieving a secret."""
 

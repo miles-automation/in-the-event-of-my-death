@@ -80,11 +80,6 @@ export interface AttachmentUploadResponse {
   attachment_id: string
 }
 
-export interface AttachmentUrlResponse {
-  presigned_url: string
-  expires_in: number
-}
-
 export interface EncryptedData {
   ciphertext: string // Base64
   iv: string // Base64
