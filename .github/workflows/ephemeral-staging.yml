@@ -33,8 +33,11 @@ on:
       destroy_when_done:
         description: "Destroy droplet at end of run"
         required: true
-        type: boolean
-        default: true
+        type: choice
+        default: "true"
+        options:
+          - "true"
+          - "false"
 
 permissions:
   contents: read
