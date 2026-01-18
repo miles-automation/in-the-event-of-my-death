@@ -50,6 +50,7 @@ export interface AttachmentMetadata {
   blob_auth_tag: string // Base64
   blob_size: number
   position: number
+  presigned_url: string // Presigned S3 URL (valid for 5 minutes)
 }
 
 export interface SecretRetrieveResponse {

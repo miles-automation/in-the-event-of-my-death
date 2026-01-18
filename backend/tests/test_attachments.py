@@ -168,6 +168,59 @@ class TestAttachmentRetrieval:
         assert data["status"] == "available"
         assert data["attachments"] is None
 
+    def test_presign_failure_does_not_delete_secret(
+        self, client, db_session, secret_with_attachment
+    ):
+        """Test that presigned URL generation failure does NOT delete the secret.
+
+        This is a regression test for data-loss risk: if presigning fails after
+        the secret is deleted, the user permanently loses their secret AND attachments.
+        The fix generates presigned URLs BEFORE the destructive retrieve operation.
+        """
+        secret, attachment, test_data = secret_with_attachment
+
+        # Mock storage to fail presigned URL generation
+        mock_storage = AsyncMock()
+        mock_storage.generate_presigned_url = AsyncMock(
+            side_effect=Exception("S3 connection timeout")
+        )
+
+        app.dependency_overrides[get_storage_service] = lambda: mock_storage
+
+        try:
+            response = client.get(
+                "/api/v1/secrets/retrieve",
+                headers={"Authorization": f"Bearer {test_data['decrypt_token']}"},
+            )
+
+            # Should return 500 error
+            assert response.status_code == 500
+            assert "attachment download URLs" in response.json()["detail"]
+
+            # Secret should NOT be deleted - verify it's still retrievable
+            db_session.expire_all()
+            from app.models.secret import Secret
+
+            refreshed_secret = db_session.query(Secret).filter(Secret.id == secret.id).first()
+            assert refreshed_secret is not None
+            assert refreshed_secret.retrieved_at is None
+            assert refreshed_secret.ciphertext is not None
+            assert refreshed_secret.is_deleted is False
+
+            # Verify we can retry (with working storage) and succeed
+            mock_storage.generate_presigned_url = AsyncMock(
+                return_value="https://s3.example.com/presigned-url"
+            )
+
+            retry_response = client.get(
+                "/api/v1/secrets/retrieve",
+                headers={"Authorization": f"Bearer {test_data['decrypt_token']}"},
+            )
+            assert retry_response.status_code == 200
+            assert retry_response.json()["status"] == "available"
+        finally:
+            app.dependency_overrides.pop(get_storage_service, None)
+
 
 class TestAttachmentLinking:
     """Tests for attachment linking during secret creation.

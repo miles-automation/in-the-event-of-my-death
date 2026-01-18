@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { extractFromFragment } from '../utils/urlFragments'
-import { getSecretStatus, retrieveSecret, getAttachmentUrl } from '../services/api'
+import { getSecretStatus, retrieveSecret } from '../services/api'
 import { decryptBytes, decryptFileMetadata, decryptFileBlob } from '../services/crypto'
 import { decodeSecretPayload } from '../services/secretPayload'
 
@@ -169,14 +169,19 @@ export default function ViewSecret() {
         const decoded = decodeSecretPayload(decryptedBytes)
 
         // Process V2 attachments: fetch from S3 and decrypt
+        // Presigned URLs are included in the retrieve response (no separate API call needed)
+        const serverAttachments = result.attachments || []
         const attachments: { name: string; type: string; size: number; url: string }[] = []
         for (const ref of decoded.attachments) {
           try {
-            // Get presigned URL for downloading from S3
-            const urlResponse = await getAttachmentUrl(ref.storage_key, params.token)
+            // Find matching server attachment by storage_key to get presigned URL
+            const serverAtt = serverAttachments.find((a) => a.storage_key === ref.storage_key)
+            if (!serverAtt?.presigned_url) {
+              throw new Error(`No presigned URL for attachment ${ref.storage_key}`)
+            }
 
-            // Fetch encrypted blob from S3
-            const blobResponse = await fetch(urlResponse.presigned_url)
+            // Fetch encrypted blob from S3 using presigned URL from retrieve response
+            const blobResponse = await fetch(serverAtt.presigned_url)
             if (!blobResponse.ok) {
               throw new Error(`Failed to download attachment: ${blobResponse.status}`)
             }

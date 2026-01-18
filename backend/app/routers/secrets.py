@@ -277,65 +277,72 @@ async def retrieve_secret_endpoint(
     if not secret:
         raise HTTPException(status_code=404, detail="Secret not found")
 
-    result = retrieve_secret(db, secret)
+    # Check secret status BEFORE any destructive operations
+    now = datetime.now(UTC).replace(tzinfo=None)
 
-    if result["status"] == "pending":
-        logger.warning("secret_access_pending", secret_id=secret.id)
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "status": "pending",
-                "unlock_at": result["unlock_at"].isoformat(),
-                "message": result["message"],
-            },
-        )
-
-    # Defense-in-depth: This branch is normally unreachable because
-    # find_secret_by_decrypt_token() excludes deleted secrets (is_deleted=True),
-    # and secrets are marked deleted immediately upon retrieval. However, we keep
-    # this check in case the lookup behavior changes or for race condition safety.
-    if result["status"] == "retrieved":
+    if secret.retrieved_at is not None:
+        # Defense-in-depth: normally unreachable because find_secret_by_decrypt_token
+        # excludes deleted secrets, but kept for race condition safety
         logger.warning("secret_already_retrieved", secret_id=secret.id)
         raise HTTPException(
             status_code=410,
             detail={
                 "status": "retrieved",
-                "message": result["message"],
+                "message": "This secret has already been retrieved and is no longer available",
             },
         )
 
-    if result["status"] == "expired":
+    if now >= secret.expires_at:
         logger.warning("secret_expired", secret_id=secret.id)
         raise HTTPException(
             status_code=410,
             detail={
                 "status": "expired",
                 "expires_at": secret.expires_at.isoformat(),
-                "message": result["message"],
+                "message": "This secret has expired and is no longer available",
             },
         )
 
-    # Generate presigned URLs for attachments
-    # This is done AFTER retrieve_secret marks the secret as retrieved, so
-    # attachments can only be downloaded via these pre-generated URLs
-    if result.get("attachments"):
-        for attachment in result["attachments"]:
+    if now < secret.unlock_at:
+        logger.warning("secret_access_pending", secret_id=secret.id)
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "status": "pending",
+                "unlock_at": secret.unlock_at.isoformat(),
+                "message": "Secret not yet available",
+            },
+        )
+
+    # Generate presigned URLs for attachments BEFORE the destructive retrieve operation
+    # This ensures that if presigning fails, the secret is NOT deleted
+    presigned_urls: dict[str, str] = {}
+    if secret.attachments:
+        for attachment in secret.attachments:
             try:
                 presigned_url = await storage_service.generate_presigned_url(
-                    object_key=attachment["storage_key"],
+                    object_key=attachment.storage_key,
                     expires_in=300,  # 5 minutes
                 )
-                attachment["presigned_url"] = presigned_url
+                presigned_urls[attachment.storage_key] = presigned_url
             except Exception as e:
                 logger.error(
                     "presigned_url_generation_failed",
-                    storage_key=attachment["storage_key"][:20],
+                    storage_key=attachment.storage_key[:20],
                     error=str(e),
                 )
                 raise HTTPException(
                     status_code=500,
                     detail="Failed to generate attachment download URLs",
                 )
+
+    # Now safe to perform the destructive retrieve (marks secret as deleted)
+    result = retrieve_secret(db, secret)
+
+    # Attach pre-generated presigned URLs to the response
+    if result.get("attachments"):
+        for attachment in result["attachments"]:
+            attachment["presigned_url"] = presigned_urls[attachment["storage_key"]]
 
     logger.info("secret_retrieved", secret_id=secret.id)
     return SecretRetrieveResponse(**result)

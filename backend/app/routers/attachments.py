@@ -97,7 +97,9 @@ async def upload_attachment_endpoint(
     )
 
 
-@router.get("/attachments/{storage_key:path}", response_model=AttachmentUrlResponse)
+@router.get(
+    "/attachments/{storage_key:path}", response_model=AttachmentUrlResponse, deprecated=True
+)
 @limiter.limit(settings.rate_limit_retrieves)
 async def get_attachment_url(
     request: Request,
@@ -108,6 +110,9 @@ async def get_attachment_url(
 ):
     """
     Get a presigned URL for downloading an attachment.
+
+    DEPRECATED: Presigned URLs are now included in the /secrets/retrieve response.
+    Use those URLs instead of calling this endpoint separately.
 
     Requires the decrypt token for the secret this attachment belongs to.
     The secret must be unlocked (past unlock_at) and not yet retrieved.
