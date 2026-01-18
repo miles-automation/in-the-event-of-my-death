@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { extractFromFragment } from '../utils/urlFragments'
 import { getSecretStatus, retrieveSecret } from '../services/api'
 import { decryptBytes, decryptFileMetadata, decryptFileBlob } from '../services/crypto'
-import { decodeSecretPayload } from '../services/secretPayload'
+import { decodeSecretPayload, sanitizeFilename } from '../services/secretPayload'
 
 type State =
   | { type: 'loading' }
@@ -210,7 +210,7 @@ export default function ViewSecret() {
             ) as ArrayBuffer
             const blob = new Blob([buffer], { type: metadata.type })
             attachments.push({
-              name: metadata.name,
+              name: sanitizeFilename(metadata.name),
               type: metadata.type,
               size: fileBytes.length,
               url: URL.createObjectURL(blob),
