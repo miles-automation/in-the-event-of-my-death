@@ -35,8 +35,6 @@ export default function Home() {
   const [step, setStep] = useState<Step>('input')
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<File[]>([])
-  const [capabilityToken, setCapabilityToken] = useState('')
-  const [showCapabilityToken, setShowCapabilityToken] = useState(false)
   const [unlockPreset, setUnlockPreset] = useState<UnlockPreset>('now')
   const [customUnlockDate, setCustomUnlockDate] = useState('')
   const [customUnlockTime, setCustomUnlockTime] = useState('00:00')
@@ -217,9 +215,7 @@ export default function Home() {
       const ciphertextSize = base64ToBytes(encrypted.ciphertext).length
       const payloadHash = await computePayloadHash(encrypted)
 
-      const trimmedCapabilityToken = capabilityToken.trim() || null
-
-      // Step 4: Create secret on server (PoW or capability token)
+      // Step 4: Create secret on server with PoW
       setProgress('Storing encrypted secret...')
       const createRequest: Parameters<typeof createSecret>[0] = {
         ciphertext: encrypted.ciphertext,
@@ -243,31 +239,25 @@ export default function Home() {
         createRequest.expires_at = expiresAt.toISOString()
       }
 
-      const response = trimmedCapabilityToken
-        ? await createSecret(createRequest, { capabilityToken: trimmedCapabilityToken })
-        : await (async () => {
-            if (ciphertextSize > MAX_POW_CIPHERTEXT_BYTES) {
-              throw new Error(
-                'This secret is too large for proof-of-work. Add a capability token to upload larger files.',
-              )
-            }
+      if (ciphertextSize > MAX_POW_CIPHERTEXT_BYTES) {
+        throw new Error(
+          'This secret is too large. Please reduce the message size or file attachments.',
+        )
+      }
 
-            // Request PoW challenge
-            setProgress('Requesting proof-of-work challenge...')
-            const challenge = await requestChallenge(payloadHash, ciphertextSize)
+      // Request PoW challenge
+      setProgress('Requesting proof-of-work challenge...')
+      const challenge = await requestChallenge(payloadHash, ciphertextSize)
 
-            // Solve PoW
-            setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
-            const powProof = await solveChallenge(challenge, payloadHash, (iterations) => {
-              setProgress(
-                `Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`,
-              )
-            })
+      // Solve PoW
+      setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
+      const powProof = await solveChallenge(challenge, payloadHash, (iterations) => {
+        setProgress(`Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`)
+      })
 
-            createRequest.pow_proof = powProof
-            setProgress('Storing encrypted secret...')
-            return createSecret(createRequest)
-          })()
+      createRequest.pow_proof = powProof
+      setProgress('Storing encrypted secret...')
+      const response = await createSecret(createRequest)
 
       // Step 5: Generate shareable links
       const encryptionKey = bytesToHex(keyBytes)
@@ -310,8 +300,6 @@ export default function Home() {
     if (attachmentInputRef.current) {
       attachmentInputRef.current.value = ''
     }
-    setCapabilityToken('')
-    setShowCapabilityToken(false)
     setUnlockPreset('now')
     setCustomUnlockDate('')
     setCustomUnlockTime('00:00')
@@ -584,26 +572,6 @@ export default function Home() {
                   {formatBytes(files.reduce((sum, f) => sum + f.size, 0))})
                 </span>
               </div>
-            )}
-          </div>
-
-          <div className="message-input-container">
-            <button
-              type="button"
-              className="linkish-button"
-              onClick={() => setShowCapabilityToken((s) => !s)}
-            >
-              {showCapabilityToken ? 'Hide capability token' : 'Have a capability token?'}
-            </button>
-            {showCapabilityToken && (
-              <input
-                id="capabilityToken"
-                type="password"
-                autoComplete="off"
-                placeholder="Capability token (optional, for large files)"
-                value={capabilityToken}
-                onChange={(e) => setCapabilityToken(e.target.value)}
-              />
             )}
           </div>
 
