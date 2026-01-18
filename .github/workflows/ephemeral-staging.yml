@@ -189,6 +189,7 @@ jobs:
           ip="$(doctl compute droplet get "${{ steps.droplet.outputs.id }}" --format PublicIPv4 --no-header)"
           echo "ip=$ip" >> "$GITHUB_OUTPUT"
           echo "host=${ip}.sslip.io" >> "$GITHUB_OUTPUT"
+          echo "url=http://${ip}.sslip.io" >> "$GITHUB_OUTPUT"
 
       - name: Wait for SSH
         run: |
@@ -231,7 +232,8 @@ jobs:
              internal_api_key=\"$(openssl rand -hex 32)\"
              printf '%s\n' \
                \"SITE_HOST=${host}\" \
-               \"SITE_ADDRESS=${host}\" \
+               \"SITE_ADDRESS=http://${host}\" \
+               \"CORS_ORIGINS=http://${host}\" \
                \"DATA_DIR=/var/lib/ieomd\" \
                \"DATABASE_URL=sqlite:////data/secrets-staging.db\" \
                \"GHCR_OWNER=${GITHUB_REPOSITORY_OWNER}\" \
@@ -245,18 +247,18 @@ jobs:
         run: |
           echo "Waiting for /health to become healthy..."
           for i in $(seq 1 90); do
-            response=$(curl -sS --fail-with-body "https://${{ steps.ip.outputs.host }}/health" 2>/dev/null) || { sleep 4; continue; }
+            response=$(curl -sS --fail-with-body "${{ steps.ip.outputs.url }}/health" 2>/dev/null) || { sleep 4; continue; }
             if echo "$response" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)'; then
               break
             fi
             sleep 4
           done
-          python3 scripts/smoke-test.py "https://${{ steps.ip.outputs.host }}"
+          python3 scripts/smoke-test.py "${{ steps.ip.outputs.url }}"
 
       - name: Summary
         run: |
           echo "## Ephemeral staging deployment" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **URL:** https://${{ steps.ip.outputs.host }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URL:** ${{ steps.ip.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Droplet ID:** \`${{ steps.droplet.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Temporary DO SSH key ID:** \`${{ steps.do_ssh_key.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Region/size:** \`${{ env.REGION }}\` / \`${{ env.SIZE }}\`" >> "$GITHUB_STEP_SUMMARY"
