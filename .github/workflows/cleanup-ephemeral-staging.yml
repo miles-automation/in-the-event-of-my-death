@@ -34,12 +34,13 @@ jobs:
         run: |
           python3 - <<'PY'
           import json
+          import os
           from datetime import datetime, timezone, timedelta
 
           with open("droplets.json", "r", encoding="utf-8") as f:
             droplets = json.load(f)
 
-          max_age_hours = float("${MAX_AGE_HOURS}")
+          max_age_hours = float(os.environ.get("MAX_AGE_HOURS", "24"))
           cutoff = datetime.now(timezone.utc) - timedelta(hours=max_age_hours)
 
           to_delete = []

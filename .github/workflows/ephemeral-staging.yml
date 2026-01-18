@@ -1,9 +1,6 @@
 name: Deploy (Ephemeral Staging)
 
 on:
-  push:
-    branches:
-      - feature/203-ephemeral-staging
   workflow_dispatch:
     inputs:
       ref:
