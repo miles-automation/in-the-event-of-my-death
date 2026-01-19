@@ -2,6 +2,8 @@
 
 IEOMD production runs on the shared `platform` droplet managed by the [platform-infra](https://github.com/richmiles/platform-infra) repository.
 
+This repository is responsible for building the IEOMD application images (backend + web). It also contains an “ephemeral staging” workflow that can spin up a short-lived droplet to validate a ref before merging.
+
 ## Architecture
 
 The `platform` droplet runs Docker Compose with shared infrastructure:
@@ -37,6 +39,16 @@ Internet → platform Caddy (TLS) → ieomd:80 (internal Caddy) → backend:8000
    curl https://ieomd.com/health
    ```
 
+### Migrations (production)
+
+Production uses Postgres, so schema changes should be applied as a one-off, serialized step during deployment (run once per release), then roll the application containers.
+
+The exact commands live in platform-infra (source of truth). At a high level, the pattern is:
+
+- Pull the new images
+- Run `alembic upgrade head` using the backend image as a one-off job
+- Restart the running services
+
 ## GitHub Actions Workflows
 
 | Workflow | Purpose |
@@ -53,21 +65,19 @@ For pre-merge testing, use the ephemeral staging workflow:
 
 1. Trigger `.github/workflows/ephemeral-staging.yml` via workflow dispatch
 2. It creates a temporary DigitalOcean droplet
-3. Deploys and runs smoke tests
+3. Deploys using `deploy/docker-compose.yml` and `deploy/remote/ieomd-deploy`, then runs smoke tests
 4. Destroys the droplet when done
 
 This avoids maintaining a dedicated staging environment.
 
+Notes:
+- Required GitHub secret: `DO_API_TOKEN` (DigitalOcean API token).
+- The workflow uses `sslip.io` so the staging URL is reachable without DNS; it prints the URL in the workflow summary.
+- For debugging, set `destroy_when_done=false`; the workflow uploads an SSH key as a short-lived artifact.
+
 ## Database
 
-Production uses PostgreSQL on the `platform` droplet. The database is managed by platform-infra's `init-db.sql`.
-
-Migrations run automatically on container startup via `docker-entrypoint.sh`.
-
-For manual migrations:
-```bash
-docker compose exec backend alembic upgrade head
-```
+Production uses PostgreSQL on the `platform` droplet. The database and credentials are managed by platform-infra (source of truth).
 
 ## Object Storage
 

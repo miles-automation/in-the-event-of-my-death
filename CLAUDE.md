@@ -3,7 +3,7 @@
 ## Project Overview
 "In The Event Of My Death" - A zero-knowledge, time-locked secret delivery service.
 - Frontend: React 19 + TypeScript + Vite
-- Backend: Python FastAPI + SQLAlchemy + SQLite
+- Backend: Python FastAPI + SQLAlchemy (SQLite locally; Postgres in production)
 - Encryption: AES-256-GCM (client-side)
 
 ## Development Commands
@@ -33,14 +33,14 @@
 
 ## Environment Variables
 - Frontend: `VITE_API_URL`, `VITE_BASE_URL`
-- Backend: `DATABASE_URL`, `CORS_ORIGINS`
+- Backend: `DATABASE_URL`, `CORS_ORIGINS`, `INTERNAL_API_KEY` (admin), `OBJECT_STORAGE_*` (file uploads)
 
 ## Docker
 
 Build and run locally:
 
 ```bash
-# Build the image
+# Build a single-container image (convenience; not the production build)
 docker build -t ieomd .
 
 # Run with SQLite (ephemeral)
@@ -58,6 +58,12 @@ The container:
 - Exposes port 8000 (both API and frontend)
 - Runs database migrations on startup
 - Accepts `DATABASE_URL` for Postgres (defaults to SQLite)
+
+Production uses two images built by GitHub Actions:
+- Backend: `backend/Dockerfile`
+- Web (Caddy serving the frontend, proxying `/api/*`): `frontend/Dockerfile`
+
+Production deployment and shared infrastructure live in the `platform-infra` repo (source of truth).
 
 ## Available CLI Tools
 Claude has authenticated access to these CLIs for infrastructure and repo management:

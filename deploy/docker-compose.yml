@@ -1,0 +1,33 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/${GHCR_OWNER:-richmiles}/in-the-event-of-my-death-backend:latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/secrets.db}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://$SITE_HOST}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      OBJECT_STORAGE_ENABLED: ${OBJECT_STORAGE_ENABLED:-false}
+      OBJECT_STORAGE_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-}
+      OBJECT_STORAGE_BUCKET: ${OBJECT_STORAGE_BUCKET:-}
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-}
+      OBJECT_STORAGE_REGION: ${OBJECT_STORAGE_REGION:-}
+      OBJECT_STORAGE_PREFIX: ${OBJECT_STORAGE_PREFIX:-}
+    volumes:
+      - ${DATA_DIR:-/var/lib/ieomd}:/data
+
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/${GHCR_OWNER:-richmiles}/in-the-event-of-my-death-web:latest}
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-$SITE_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:
