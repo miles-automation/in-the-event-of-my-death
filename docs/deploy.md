@@ -1,146 +1,92 @@
-# Deployment (DigitalOcean droplet)
+# Deployment
 
-This document describes a v0 deployment setup using a DigitalOcean droplet, Docker Compose, and Caddy.
-
-Goals:
-- Automated deployments via GitHub Actions
-- Same-origin API (`/api/*`) to avoid CORS complexity
-- PostgreSQL on shared platform infrastructure (SQLite still supported for local dev)
-- Locked-down deploy access (least privilege)
+IEOMD production runs on the shared `platform` droplet managed by the [platform-infra](https://github.com/richmiles/platform-infra) repository.
 
 ## Architecture
 
-- **Droplet** runs Docker Compose:
-  - `web` (Caddy + frontend static assets)
-  - `backend` (FastAPI)
-- **Caddy** terminates TLS and reverse-proxies:
-  - `/api/*` and `/health` → backend
-  - everything else → frontend static files with SPA fallback
+The `platform` droplet runs Docker Compose with shared infrastructure:
+- **Caddy** - Reverse proxy handling TLS for all services
+- **Postgres** - Shared database (IEOMD gets isolated `ieomd` user + `ieomd_db`)
+- **IEOMD web** - Frontend + internal Caddy (routes `/api/*` to backend)
+- **IEOMD backend** - FastAPI application
 
-Compose files live in `deploy/`.
-
-## One-time droplet setup (prod)
-
-1. Create an Ubuntu LTS droplet.
-2. Install Docker + Compose plugin.
-3. Create directories:
-   - `/opt/ieomd/` (deployment directory)
-   - `/var/backups/ieomd/` (database backups, if needed)
-4. Copy these files to `/opt/ieomd/`:
-   - `deploy/docker-compose.yml`
-   - `deploy/docker-compose.staging.yml` (staging only)
-   - `deploy/Caddyfile` (if you want to override baked-in config)
-5. Create `/opt/ieomd/.env` with at least:
-   - `SITE_HOST=ieomd.com`
-   - `SITE_ADDRESS=ieomd.com, www.ieomd.com` (Caddy site label(s))
-   - `DATABASE_URL=postgresql://ieomd:<password>@<platform-ip>:5432/ieomd`
-6. Ensure `/opt/ieomd` contains a compose override if needed.
-
-## Locked-down deploy user
-
-Recommended approach:
-- Create a `deploy` user that cannot open an interactive shell.
-- Install the deploy script as root: `/usr/local/bin/ieomd-deploy` from `deploy/remote/ieomd-deploy`.
-- In `authorized_keys`, force the command to run `sudo /usr/local/bin/ieomd-deploy ...` and disable PTY/port-forwarding.
-- In sudoers, allow only that command for the deploy user.
-
-## GitHub Actions secrets
-
-You’ll need repository secrets for production, and for ephemeral staging (recommended).
-
-- `DO_API_TOKEN` (DigitalOcean API token; required for ephemeral staging workflows)
-- Legacy always-on staging droplet (optional):
-  - `STAGING_SSH_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_KNOWN_HOSTS`
-  - `STAGING_SITE_HOST` (e.g. `staging.ieomd.com`)
-- `PROD_SSH_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY`, `PROD_SSH_KNOWN_HOSTS`
-- `PROD_SITE_HOST` (e.g. `ieomd.com`)
-
-## GHCR image pulls
-
-The droplet must be able to pull images from GHCR:
-
-- Easiest: make the GHCR packages public.
-- If packages are private: authenticate on the droplet (one-time):
-  - Create a GitHub token with `read:packages`
-  - On the droplet: `docker login ghcr.io`
-
-## Deployment workflows
-
-- Ephemeral staging deploy is manual (workflow dispatch) and should be destroyed after use:
-  - `.github/workflows/ephemeral-staging.yml`
-  - Backstop cleanup: `.github/workflows/cleanup-ephemeral-staging.yml`
-- Legacy always-on staging droplet deploy is manual:
-  - `.github/workflows/build-and-deploy-staging.yml`
-- Production deploy is manual and gated by GitHub Environments approval:
-  - `.github/workflows/promote-to-production.yml` (version bump + deploy)
-  - `.github/workflows/deploy-production.yml` (deploy an existing tag)
-
-## Ephemeral staging (recommended)
-
-For a low-cost staging environment that only runs when needed, use the GitHub Actions workflow:
-
-- `.github/workflows/ephemeral-staging.yml`
-
-It will:
-1. Build and push backend/web images tagged with the workflow run.
-2. Create a short-lived DigitalOcean droplet (same baseline as prod/staging: Ubuntu 24.04, `s-1vcpu-1gb` in `nyc3`).
-3. Deploy using `/usr/local/bin/ieomd-deploy` (includes SQLite backup-before-migrate).
-4. Run `scripts/smoke-test.py` against the deployed site.
-5. Destroy the droplet (default) and delete the temporary DigitalOcean SSH key.
-
-Notes:
-- The workflow uses a temporary hostname `https://<ip>.sslip.io` to avoid managing DNS for ephemeral runs.
-- A scheduled backstop cleanup exists in `.github/workflows/cleanup-ephemeral-staging.yml` to delete any stray droplets tagged `ephemeral-staging`.
-
-## Database (PostgreSQL)
-
-Production uses PostgreSQL on the shared `platform` droplet. SQLite is still supported for local development.
-
-### Initial setup (on platform droplet)
-
-```sql
-CREATE DATABASE ieomd;
-CREATE USER ieomd WITH ENCRYPTED PASSWORD '<secure-password>';
-GRANT ALL PRIVILEGES ON DATABASE ieomd TO ieomd;
--- For Alembic migrations
-\c ieomd
-GRANT ALL ON SCHEMA public TO ieomd;
+Traffic flow:
+```
+Internet → platform Caddy (TLS) → ieomd:80 (internal Caddy) → backend:8000
 ```
 
-### Environment configuration
+## Deployment Model
 
-In `/opt/ieomd/.env`:
-```env
-DATABASE_URL=postgresql://ieomd:<password>@<platform-ip>:5432/ieomd
-```
+1. **Build images**: Run the `Build` workflow in GitHub Actions (or push to main)
+   - Builds `ghcr.io/richmiles/in-the-event-of-my-death-backend:sha-xxxxx`
+   - Builds `ghcr.io/richmiles/in-the-event-of-my-death-web:sha-xxxxx`
+   - Also tags as `latest`
 
-### Running migrations
+2. **Deploy**: Update platform-infra and restart services
+   ```bash
+   ssh root@<platform-ip>
+   cd /opt/platform
+   # Update image tag in .env
+   sed -i 's/IEOMD_IMAGE_TAG=.*/IEOMD_IMAGE_TAG=sha-xxxxx/' .env
+   docker compose pull
+   docker compose up -d
+   ```
 
-After deploy, run migrations:
+3. **Verify**: Check health endpoint
+   ```bash
+   curl https://ieomd.com/health
+   ```
+
+## GitHub Actions Workflows
+
+| Workflow | Purpose |
+|----------|---------|
+| `ci.yml` | Runs tests on PRs |
+| `build.yml` | Builds and pushes Docker images to GHCR |
+| `ephemeral-staging.yml` | Creates temporary staging droplet for testing |
+| `cleanup-ephemeral-staging.yml` | Cleans up old ephemeral droplets |
+| `generate-token.yml` | Admin utility for capability tokens |
+
+## Ephemeral Staging
+
+For pre-merge testing, use the ephemeral staging workflow:
+
+1. Trigger `.github/workflows/ephemeral-staging.yml` via workflow dispatch
+2. It creates a temporary DigitalOcean droplet
+3. Deploys and runs smoke tests
+4. Destroys the droplet when done
+
+This avoids maintaining a dedicated staging environment.
+
+## Database
+
+Production uses PostgreSQL on the `platform` droplet. The database is managed by platform-infra's `init-db.sql`.
+
+Migrations run automatically on container startup via `docker-entrypoint.sh`.
+
+For manual migrations:
 ```bash
-docker compose run --rm backend alembic upgrade head
+docker compose exec backend alembic upgrade head
 ```
 
-### Rollback plan
+## Object Storage
 
-For database rollback:
-1. Restore from PostgreSQL backup (pg_dump/pg_restore)
-2. Redeploy the previous image tag
+Encrypted file attachments use DigitalOcean Spaces (S3-compatible).
 
-## Object storage (DigitalOcean Spaces)
+Production uses the shared `platform-storage` bucket with `ieomd/` prefix to isolate objects.
 
-For encrypted file attachments, configure an S3-compatible bucket (DigitalOcean Spaces).
+Configuration (in platform-infra `.env`):
+- `OBJECT_STORAGE_ENABLED=true`
+- `OBJECT_STORAGE_ENDPOINT=https://nyc3.digitaloceanspaces.com`
+- `OBJECT_STORAGE_BUCKET=platform-storage`
+- `OBJECT_STORAGE_PREFIX=ieomd`
 
-Production uses the shared `platform-storage` bucket with a project prefix to isolate IEOMD objects.
+## Local Development
 
-1. Ensure access to the shared Spaces bucket (`platform-storage`).
-2. Add to `/opt/ieomd/.env`:
-   - `OBJECT_STORAGE_ENABLED=true`
-   - `OBJECT_STORAGE_ENDPOINT=https://nyc3.digitaloceanspaces.com`
-   - `OBJECT_STORAGE_BUCKET=platform-storage`
-   - `OBJECT_STORAGE_PREFIX=ieomd`
-   - `OBJECT_STORAGE_ACCESS_KEY=<spaces-access-key>`
-   - `OBJECT_STORAGE_SECRET_KEY=<spaces-secret-key>`
-   - `OBJECT_STORAGE_REGION=nyc3`
+For local development, use:
+```bash
+make dev          # Run frontend + backend
+make minio        # Start local S3-compatible storage (optional)
+```
 
-The `OBJECT_STORAGE_PREFIX` setting prepends `ieomd/` to all object keys (e.g., `ieomd/attachments/{uuid}`), allowing multiple projects to share the same bucket.
+See [README.md](../README.md) for full setup instructions.

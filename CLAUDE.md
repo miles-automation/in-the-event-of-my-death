@@ -72,7 +72,7 @@ Claude has authenticated access to these CLIs for infrastructure and repo manage
 
 - **`doctl`** - DigitalOcean CLI (authenticated)
   - Droplets: `doctl compute droplet list`
-  - Droplet names: `platform` (shared infra), `ieomd-staging`
+  - Droplet name: `platform` (shared infra - runs IEOMD production)
 
 - **`ssh`** - Direct server access
   - `ssh root@<ip>` (root access is intentional for this setup)

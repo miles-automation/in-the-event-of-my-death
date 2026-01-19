@@ -1,6 +1,0 @@
-services:
-  backend:
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/secrets-staging.db}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://$SITE_HOST}
-

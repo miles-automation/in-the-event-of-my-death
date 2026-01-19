@@ -213,16 +213,9 @@ RATE_LIMIT_RETRIEVES=30/minute
 
 ## Deployment
 
-Deployment configuration lives in `deploy/` and is documented in `docs/deploy.md`.
+Production runs on shared infrastructure managed by [platform-infra](https://github.com/richmiles/platform-infra). See [docs/deploy.md](docs/deploy.md) for deployment instructions.
 
-For release/versioning and database migration policy, see `docs/versioning-and-migrations.md`.
-
-For production deployment, you will need to:
-- Set up a production database (the application uses SQLAlchemy and supports multiple database backends)
-- Configure environment variables
-- Set up HTTPS/TLS
-- Implement proper rate limiting
-- Configure backup and monitoring
+For release/versioning and database migration policy, see [docs/versioning-and-migrations.md](docs/versioning-and-migrations.md).
 
 ## Security
 
