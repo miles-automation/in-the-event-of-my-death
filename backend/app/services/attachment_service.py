@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.secret import Secret
 from app.models.secret_attachment import SecretAttachment
 from app.services.storage_service import ObjectStorageService
@@ -49,8 +50,10 @@ async def upload_attachment(
     metadata_iv = base64.b64decode(metadata_iv_b64)
     metadata_auth_tag = base64.b64decode(metadata_auth_tag_b64)
 
-    # Generate unique storage key
-    storage_key = f"attachments/{uuid.uuid4()}"
+    # Generate unique storage key with optional prefix for shared buckets
+    prefix = settings.object_storage_prefix.rstrip("/")
+    object_id = uuid.uuid4()
+    storage_key = f"{prefix}/attachments/{object_id}" if prefix else f"attachments/{object_id}"
 
     # Upload to S3
     await storage_service.upload_bytes(
