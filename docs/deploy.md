@@ -1,14 +1,33 @@
 # Deployment (DigitalOcean droplet)
 
-This document describes a v0 deployment setup using a DigitalOcean droplet, Docker Compose, and Caddy.
+This document describes deployment setup using DigitalOcean infrastructure.
 
 Goals:
 - Automated deployments via GitHub Actions
-- Same-origin API (`/api/*`) to avoid CORS complexity
 - PostgreSQL on shared platform infrastructure (SQLite still supported for local dev)
+- Shared object storage (DigitalOcean Spaces) with project prefix
 - Locked-down deploy access (least privilege)
 
-## Architecture
+## Shared Platform Infrastructure
+
+Production IEOMD runs on the shared `platform` droplet managed by [`richmiles/platform-infra`](https://github.com/richmiles/platform-infra).
+
+The platform provides:
+- **Postgres** - Shared database server (each service gets its own database)
+- **Caddy** - Reverse proxy with automatic HTTPS
+- **DigitalOcean Spaces** - Shared S3-compatible object storage (`platform-storage` bucket)
+
+IEOMD-specific configuration in platform-infra:
+- Service: `ieomd` (pulls `ghcr.io/richmiles/ieomd:latest`)
+- Database: `ieomd_db` with user `ieomd`
+- Object storage prefix: `ieomd/` (isolates IEOMD objects in shared bucket)
+- Caddy routes: `ieomd.com` → `ieomd:8000`
+
+To deploy or update IEOMD on platform, see the [platform-infra README](https://github.com/richmiles/platform-infra).
+
+## Standalone Architecture (Legacy/Staging)
+
+For standalone deployments (e.g., ephemeral staging), IEOMD can run on its own droplet:
 
 - **Droplet** runs Docker Compose:
   - `web` (Caddy + frontend static assets)
