@@ -5,7 +5,7 @@ This document describes a v0 deployment setup using a DigitalOcean droplet, Dock
 Goals:
 - Automated deployments via GitHub Actions
 - Same-origin API (`/api/*`) to avoid CORS complexity
-- SQLite for v0 with backup-before-migrate
+- PostgreSQL on shared platform infrastructure (SQLite still supported for local dev)
 - Locked-down deploy access (least privilege)
 
 ## Architecture
@@ -25,8 +25,7 @@ Compose files live in `deploy/`.
 2. Install Docker + Compose plugin.
 3. Create directories:
    - `/opt/ieomd/` (deployment directory)
-   - `/var/lib/ieomd/` (SQLite data)
-   - `/var/backups/ieomd/` (SQLite backups)
+   - `/var/backups/ieomd/` (database backups, if needed)
 4. Copy these files to `/opt/ieomd/`:
    - `deploy/docker-compose.yml`
    - `deploy/docker-compose.staging.yml` (staging only)
@@ -34,8 +33,7 @@ Compose files live in `deploy/`.
 5. Create `/opt/ieomd/.env` with at least:
    - `SITE_HOST=ieomd.com`
    - `SITE_ADDRESS=ieomd.com, www.ieomd.com` (Caddy site label(s))
-   - `DATA_DIR=/var/lib/ieomd`
-   - `DATABASE_URL=sqlite:////data/secrets.db`
+   - `DATABASE_URL=postgresql://ieomd:<password>@<platform-ip>:5432/ieomd`
 6. Ensure `/opt/ieomd` contains a compose override if needed.
 
 ## Locked-down deploy user
@@ -94,26 +92,55 @@ Notes:
 - The workflow uses a temporary hostname `https://<ip>.sslip.io` to avoid managing DNS for ephemeral runs.
 - A scheduled backstop cleanup exists in `.github/workflows/cleanup-ephemeral-staging.yml` to delete any stray droplets tagged `ephemeral-staging`.
 
-## SQLite migration + rollback
+## Database (PostgreSQL)
 
-Production deploy performs:
-1. Copy DB file to `/var/backups/ieomd/` with a timestamp.
-2. Run `alembic upgrade head`.
-3. Restart services.
+Production uses PostgreSQL on the shared `platform` droplet. SQLite is still supported for local development.
 
-Rollback plan:
-- Restore the DB backup file and redeploy the previous image tag.
+### Initial setup (on platform droplet)
+
+```sql
+CREATE DATABASE ieomd;
+CREATE USER ieomd WITH ENCRYPTED PASSWORD '<secure-password>';
+GRANT ALL PRIVILEGES ON DATABASE ieomd TO ieomd;
+-- For Alembic migrations
+\c ieomd
+GRANT ALL ON SCHEMA public TO ieomd;
+```
+
+### Environment configuration
+
+In `/opt/ieomd/.env`:
+```env
+DATABASE_URL=postgresql://ieomd:<password>@<platform-ip>:5432/ieomd
+```
+
+### Running migrations
+
+After deploy, run migrations:
+```bash
+docker compose run --rm backend alembic upgrade head
+```
+
+### Rollback plan
+
+For database rollback:
+1. Restore from PostgreSQL backup (pg_dump/pg_restore)
+2. Redeploy the previous image tag
 
 ## Object storage (DigitalOcean Spaces)
 
 For encrypted file attachments, configure an S3-compatible bucket (DigitalOcean Spaces).
 
-1. Create a Spaces bucket (e.g. `ieomd-prod-attachments`) in your region (e.g. `nyc3`).
-2. Create a Spaces access key + secret (write access to that bucket).
-3. Add to `/opt/ieomd/.env`:
+Production uses the shared `platform-storage` bucket with a project prefix to isolate IEOMD objects.
+
+1. Ensure access to the shared Spaces bucket (`platform-storage`).
+2. Add to `/opt/ieomd/.env`:
    - `OBJECT_STORAGE_ENABLED=true`
-   - `OBJECT_STORAGE_ENDPOINT=https://<region>.digitaloceanspaces.com` (e.g. `https://nyc3.digitaloceanspaces.com`)
-   - `OBJECT_STORAGE_BUCKET=<bucket-name>`
+   - `OBJECT_STORAGE_ENDPOINT=https://nyc3.digitaloceanspaces.com`
+   - `OBJECT_STORAGE_BUCKET=platform-storage`
+   - `OBJECT_STORAGE_PREFIX=ieomd`
    - `OBJECT_STORAGE_ACCESS_KEY=<spaces-access-key>`
    - `OBJECT_STORAGE_SECRET_KEY=<spaces-secret-key>`
-   - `OBJECT_STORAGE_REGION=<region>` (e.g. `nyc3`)
+   - `OBJECT_STORAGE_REGION=nyc3`
+
+The `OBJECT_STORAGE_PREFIX` setting prepends `ieomd/` to all object keys (e.g., `ieomd/attachments/{uuid}`), allowing multiple projects to share the same bucket.

@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     object_storage_access_key: str | None = None
     object_storage_secret_key: str | None = None
     object_storage_region: str = "us-east-1"
+    object_storage_prefix: str = ""  # Optional prefix for shared buckets (e.g., "ieomd")
 
 
 settings = Settings()
