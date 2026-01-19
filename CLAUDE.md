@@ -35,6 +35,30 @@
 - Frontend: `VITE_API_URL`, `VITE_BASE_URL`
 - Backend: `DATABASE_URL`, `CORS_ORIGINS`
 
+## Docker
+
+Build and run locally:
+
+```bash
+# Build the image
+docker build -t ieomd .
+
+# Run with SQLite (ephemeral)
+docker run -p 8000:8000 ieomd
+
+# Run with Postgres
+docker run -p 8000:8000 \
+  -e DATABASE_URL=postgresql://user:pass@host:5432/ieomd_db \
+  -e CORS_ORIGINS='["https://ieomd.com"]' \
+  ieomd
+```
+
+The container:
+- Builds the frontend and serves it from FastAPI
+- Exposes port 8000 (both API and frontend)
+- Runs database migrations on startup
+- Accepts `DATABASE_URL` for Postgres (defaults to SQLite)
+
 ## Available CLI Tools
 Claude has authenticated access to these CLIs for infrastructure and repo management:
 
@@ -48,7 +72,7 @@ Claude has authenticated access to these CLIs for infrastructure and repo manage
 
 - **`doctl`** - DigitalOcean CLI (authenticated)
   - Droplets: `doctl compute droplet list`
-  - Droplet names: `ieomd-prod`, `ieomd-staging`
+  - Droplet names: `platform` (shared infra), `ieomd-staging`
 
 - **`ssh`** - Direct server access
   - `ssh root@<ip>` (root access is intentional for this setup)
