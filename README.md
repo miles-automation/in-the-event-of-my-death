@@ -47,7 +47,7 @@ The application consists of three main components:
 
 ### Prerequisites
 
-- **Python 3.11+** with [Poetry](https://python-poetry.org/)
+- **Python 3.14+** with [Poetry](https://python-poetry.org/)
 - **Node.js 18+** with npm
 - **Make** (optional, for convenience commands)
 
@@ -121,7 +121,7 @@ make test          # Run all tests (backend + frontend)
 make lint          # Run linters for both backend and frontend
 make format        # Auto-format code
 make typecheck     # Run TypeScript type checking
-make check         # Run lint, typecheck, and tests
+make check         # Run lint, format-check, typecheck, and tests
 ```
 
 ## Configuration
@@ -148,12 +148,12 @@ VITE_BASE_URL=http://localhost:5173
 Create a `.env` file in the `backend/` directory based on `.env.example`:
 
 ```env
-# Database Configuration
-DATABASE_URL=sqlite:///./secrets.db
-
-# CORS Configuration
-# Comma-separated list of allowed origins
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+  # Database Configuration
+  DATABASE_URL=sqlite:///./secrets.db
+  
+  # CORS Configuration
+  # JSON array of allowed origins
+  CORS_ORIGINS=["http://localhost:5173","http://127.0.0.1:5173"]
 
 # Proof of Work
 # Base difficulty; the service auto-adjusts per payload size
@@ -168,7 +168,7 @@ RATE_LIMIT_RETRIEVES=30/minute
 
 **Variables:**
 - `DATABASE_URL`: Database connection string. Default is SQLite for development. For production, consider PostgreSQL
-- `CORS_ORIGINS`: Comma-separated list of allowed CORS origins. In production, set this to your frontend URL
+- `CORS_ORIGINS`: JSON array of allowed CORS origins. In production, set this to your frontend URL
 - `POW_BASE_DIFFICULTY`: Proof-of-work difficulty baseline; the service increases difficulty for larger payloads
 - `POW_CHALLENGE_TTL_SECONDS`: How long proof-of-work challenges remain valid
 - `RATE_LIMIT_CHALLENGES`: Rate limit for requesting proof-of-work challenges
@@ -213,7 +213,7 @@ RATE_LIMIT_RETRIEVES=30/minute
 
 ## Deployment
 
-Production runs on shared infrastructure managed by [platform-infra](https://github.com/richmiles/platform-infra). See [docs/deploy.md](docs/deploy.md) for deployment instructions.
+Production runs on shared infrastructure managed by [platform-infra](https://github.com/richmiles/platform-infra). See [docs/deploy.md](docs/deploy.md) for production and ephemeral staging details.
 
 For release/versioning and database migration policy, see [docs/versioning-and-migrations.md](docs/versioning-and-migrations.md).
 

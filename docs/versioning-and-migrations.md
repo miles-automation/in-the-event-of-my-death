@@ -13,44 +13,50 @@ This repository uses a single, repo-wide version and Alembic migrations for sche
 
 The frontend UI displays the version subtly in the footer via `__APP_VERSION__`, which is injected at build time from `frontend/package.json` in `frontend/vite.config.ts`.
 
-## Database migrations (SQLite in production, v0)
+## Database migrations
 
 ### Principles
 
 - Schema changes happen via Alembic migrations only.
-- Production migrations are an explicit, serialized step.
-- For SQLite, the rollback strategy is to restore from a pre-migration backup of the database file.
+- Production migrations should be treated as an explicit, serialized step (run once per release), even if the surrounding deploy process is automated.
+- Prefer backwards-compatible changes (expand/contract) so rollbacks don’t require immediate schema reversal.
 
-### Production migration workflow (maintenance window)
+### Local development (SQLite)
 
-Assuming `DATABASE_URL=sqlite:////path/to/secrets.db` (a persistent path on disk):
+By default the backend uses SQLite via `DATABASE_URL=sqlite:///./secrets.db`.
 
-1. Stop the backend (or place it in maintenance mode).
-2. Backup the database file.
-3. Run migrations: `cd backend && poetry run alembic upgrade head`
-4. Start the backend and verify health.
+Run migrations with:
 
-Suggested backup procedure:
+- `make migrate`
+- or `cd backend && poetry run alembic upgrade head`
 
-- Copy the database file with a timestamp (keep at least the most recent few).
-- Optionally run an integrity check:
-  - `sqlite3 /path/to/secrets.db "PRAGMA integrity_check;"`
+### Ephemeral staging (SQLite)
+
+The ephemeral staging workflow provisions a droplet and deploys via `deploy/remote/ieomd-deploy`, which:
+
+- Stops the backend
+- Takes a point-in-time backup of the SQLite DB file
+- Runs `alembic upgrade head`
+- Restarts services
 
 ### Migration testing
 
 - Migrations are validated by running `alembic upgrade head` against a fresh SQLite database in backend tests.
 - Run locally with `make test` or `make check`.
 
-## Plan to migrate to Postgres (future)
+### Production (Postgres)
 
-SQLite is a good low-cost starting point for a single-instance deployment, but zero-downtime deploys and horizontal scaling typically require Postgres.
+Production uses Postgres on the shared `platform` droplet. The platform-infra repo is the source of truth for how migrations are applied during deploy.
 
-High-level migration plan:
+At a high level:
 
-1. Provision a Postgres database and set `DATABASE_URL` accordingly.
-2. Run `alembic upgrade head` against Postgres (schema created from migrations).
-3. Copy data from SQLite to Postgres during a maintenance window.
-4. Switch the backend to Postgres and verify behavior.
+1. Pull the new images for the release.
+2. Run `alembic upgrade head` once as a one-off job using the backend image.
+3. Roll/restart the running backend after migrations complete.
+
+### Rollbacks
+
+For production, prefer “roll forward” fixes (new migration + new release). If you must roll back application code, ensure schema changes are backwards-compatible (expand/contract) so the previous image can still run.
 
 ## Path to zero downtime (future)
 
@@ -61,4 +67,3 @@ To support zero-downtime releases:
   - Deploy code that supports both old and new schema.
   - Contract: remove old columns/constraints in a later release.
 - Run migrations as a separate one-off job (only once per release), then roll application instances.
-
