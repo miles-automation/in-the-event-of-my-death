@@ -50,4 +50,5 @@ frontend/.vite/
 
 # Deploy scripts (not needed in container)
 deploy/
+!deploy/Caddyfile
 scripts/
