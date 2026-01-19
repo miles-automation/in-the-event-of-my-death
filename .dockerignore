@@ -1,19 +1,53 @@
+# Git
 .git
 .github
-.playwright-mcp
+.githooks
+.gitignore
 
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Development tools
+.playwright-mcp
+Makefile
+
+# Python
 **/__pycache__/
 **/*.py[cod]
+**/*.pyo
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+backend/.venv/
+backend/tests/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Logs
 **/*.log
 
-backend/.pytest_cache
-backend/.ruff_cache
-backend/.venv
-
-frontend/node_modules
-frontend/dist
-frontend/.vite
-
+# Databases (local dev)
 *.sqlite
 *.db
+.minio/
 
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Deploy scripts (not needed in container)
+deploy/
+scripts/
