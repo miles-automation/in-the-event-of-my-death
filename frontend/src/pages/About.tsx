@@ -43,6 +43,16 @@ export default function About() {
         </ul>
       </section>
 
+      <section id="analytics" className="info-section">
+        <h2>Analytics</h2>
+        <p>
+          We use <a href="https://umami.is">Umami</a>, a privacy-focused analytics service we host
+          ourselves at analytics.sparkswarm.com. Umami does not use cookies, does not track
+          individuals across sites, and does not collect personal information. We only see aggregate
+          page views and browser statistics to understand how people use IEOMD.
+        </p>
+      </section>
+
       <section id="faq" className="info-section">
         <h2>FAQ</h2>
         <div className="faq-item">
