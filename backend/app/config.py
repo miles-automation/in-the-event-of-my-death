@@ -50,6 +50,11 @@ class Settings(BaseSettings):
 
     # Capability Tokens
     capability_tiers: dict = {
+        "premium": {
+            "max_file_size_bytes": 50_000_000,  # 50MB
+            "max_expiry_days": 1825,  # 5 years
+            "price_usd": 1.00,
+        },
         "basic": {
             "max_file_size_bytes": 10_000_000,
             "max_expiry_days": 365,
@@ -69,6 +74,9 @@ class Settings(BaseSettings):
     rate_limit_token_create: str = "100/minute"
     rate_limit_token_validate: str = "60/minute"
     internal_api_key: str | None = None
+
+    # BTCPay Server
+    btcpay_webhook_secret: str | None = None
 
     # Object Storage (S3-compatible; e.g. DigitalOcean Spaces, MinIO)
     object_storage_enabled: bool = False

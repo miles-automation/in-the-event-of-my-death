@@ -15,7 +15,14 @@ from app.database import engine
 from app.logging_config import get_logger, setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import limiter
-from app.routers import attachments, capability_tokens, challenges, feedback, secrets
+from app.routers import (
+    attachments,
+    btcpay_webhook,
+    capability_tokens,
+    challenges,
+    feedback,
+    secrets,
+)
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.services.matrix_service import send_error_alert
 
@@ -170,6 +177,7 @@ app.include_router(capability_tokens.router, prefix="/api/v1", tags=["capability
 app.include_router(challenges.router, prefix="/api/v1", tags=["challenges"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
 app.include_router(secrets.router, prefix="/api/v1", tags=["secrets"])
+app.include_router(btcpay_webhook.router, prefix="/api/v1", tags=["btcpay"])
 
 
 @app.get("/health")
