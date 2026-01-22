@@ -181,6 +181,25 @@ export async function submitFeedback(
 }
 
 /**
+ * Validate a capability token without consuming it.
+ * Returns tier information if valid.
+ */
+export interface CapabilityTokenInfo {
+  valid: boolean
+  tier?: string
+  max_file_size_bytes?: number
+  max_expiry_days?: number
+  error?: string
+}
+
+export async function validateCapabilityToken(token: string): Promise<CapabilityTokenInfo> {
+  const response = await fetch(`${API_BASE}/capability-tokens/validate`, {
+    headers: { 'X-Capability-Token': token },
+  })
+  return handleResponse<CapabilityTokenInfo>(response)
+}
+
+/**
  * Upload an encrypted file attachment to object storage.
  *
  * The attachment is created without being linked to a secret.
