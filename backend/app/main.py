@@ -17,7 +17,7 @@ from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import limiter
 from app.routers import attachments, capability_tokens, challenges, feedback, secrets
 from app.scheduler import shutdown_scheduler, start_scheduler
-from app.services.discord_service import send_error_alert
+from app.services.matrix_service import send_error_alert
 
 # Initialize logging before anything else
 setup_logging()
@@ -133,7 +133,7 @@ app.state.limiter = limiter
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    """Custom rate limit handler that sends Discord alerts."""
+    """Custom rate limit handler that sends Matrix alerts."""
     # Get correlation ID from structlog context
     contextvars = structlog.contextvars.get_contextvars()
     correlation_id = contextvars.get("correlation_id")
