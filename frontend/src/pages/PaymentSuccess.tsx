@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 
 interface TokenResponse {
   status: 'pending' | 'success' | 'already_retrieved'
@@ -13,16 +13,12 @@ interface TokenResponse {
 export default function PaymentSuccess() {
   const [searchParams] = useSearchParams()
   const invoiceId = searchParams.get('invoiceId')
+  const navigate = useNavigate()
 
   const [status, setStatus] = useState<
     'loading' | 'pending' | 'success' | 'error' | 'already_retrieved'
   >('loading')
-  const [token, setToken] = useState<string | null>(null)
-  const [tierInfo, setTierInfo] = useState<{ maxFileSize: number; maxExpiryDays: number } | null>(
-    null,
-  )
   const [error, setError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     document.title = 'Payment Complete | In The Event Of My Death'
@@ -42,12 +38,8 @@ export default function PaymentSuccess() {
       const data: TokenResponse = await response.json()
 
       if (data.status === 'success' && data.token) {
-        setToken(data.token)
-        setTierInfo({
-          maxFileSize: data.max_file_size_bytes || 50_000_000,
-          maxExpiryDays: data.max_expiry_days || 1825,
-        })
-        setStatus('success')
+        // Redirect to home with token - user can create secret immediately
+        navigate(`/?token=${encodeURIComponent(data.token)}`, { replace: true })
       } else if (data.status === 'pending') {
         setStatus('pending')
       } else if (data.status === 'already_retrieved') {
@@ -60,7 +52,7 @@ export default function PaymentSuccess() {
       setStatus('error')
       setError('Failed to retrieve token. Please try again.')
     }
-  }, [invoiceId])
+  }, [invoiceId, navigate])
 
   // Initial fetch and polling for pending status
   useEffect(() => {
@@ -75,29 +67,6 @@ export default function PaymentSuccess() {
 
     return () => clearInterval(interval)
   }, [fetchToken, status])
-
-  const copyToken = async () => {
-    if (!token) return
-    try {
-      await navigator.clipboard.writeText(token)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Fallback for older browsers
-      const textarea = document.createElement('textarea')
-      textarea.value = token
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  const formatFileSize = (bytes: number) => {
-    return `${Math.round(bytes / 1_000_000)}MB`
-  }
 
   if (!invoiceId) {
     return (
@@ -127,50 +96,6 @@ export default function PaymentSuccess() {
           <p>Your payment is being confirmed on the Bitcoin network.</p>
           <p>This page will update automatically. Please wait...</p>
           <div className="loading-spinner" aria-label="Waiting for confirmation" />
-        </>
-      )}
-
-      {status === 'success' && token && (
-        <>
-          <h1>Payment Complete!</h1>
-          <p>Thank you for your purchase. Here is your premium token:</p>
-
-          <div className="token-display">
-            <code className="token-value">{token}</code>
-            <button onClick={copyToken} className="button secondary copy-button">
-              {copied ? 'Copied!' : 'Copy Token'}
-            </button>
-          </div>
-
-          <div className="token-warning">
-            <strong>Important:</strong> Save this token now. It can only be displayed once and
-            cannot be recovered.
-          </div>
-
-          {tierInfo && (
-            <div className="tier-benefits">
-              <h3>Your Premium Benefits</h3>
-              <ul>
-                <li>Up to {formatFileSize(tierInfo.maxFileSize)} file attachments</li>
-                <li>{Math.round(tierInfo.maxExpiryDays / 365)}-year maximum expiry</li>
-              </ul>
-            </div>
-          )}
-
-          <div className="next-steps">
-            <h3>How to Use Your Token</h3>
-            <ol>
-              <li>
-                Go to the <Link to="/">home page</Link> to create a secret
-              </li>
-              <li>When prompted, enter your premium token</li>
-              <li>Your premium limits will be applied to that secret</li>
-            </ol>
-          </div>
-
-          <Link to="/" className="button primary">
-            Create a Premium Secret
-          </Link>
         </>
       )}
 

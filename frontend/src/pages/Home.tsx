@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   generateAesKey,
   exportKey,
@@ -10,7 +11,13 @@ import {
   base64ToBytes,
   computePayloadHash,
 } from '../services/crypto'
-import { requestChallenge, createSecret, uploadAttachment } from '../services/api'
+import {
+  requestChallenge,
+  createSecret,
+  uploadAttachment,
+  validateCapabilityToken,
+  type CapabilityTokenInfo,
+} from '../services/api'
 import { solveChallenge } from '../services/pow'
 import { encodeSecretPayload, type AttachmentRef } from '../services/secretPayload'
 import { generateShareableLinks } from '../utils/urlFragments'
@@ -32,6 +39,8 @@ const MAX_TOTAL_SIZE_BYTES = 100 * 1024 * 1024 // 100MB total
 const MAX_FILES = 10
 
 export default function Home() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [step, setStep] = useState<Step>('input')
   const [message, setMessage] = useState('')
   const [files, setFiles] = useState<File[]>([])
@@ -59,12 +68,41 @@ export default function Home() {
   const expiryRef = useRef<HTMLDivElement>(null)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
 
+  // Premium token state
+  const [premiumToken, setPremiumToken] = useState<string | null>(null)
+  const [premiumInfo, setPremiumInfo] = useState<CapabilityTokenInfo | null>(null)
+  const [tokenCopied, setTokenCopied] = useState(false)
+
   // Tick state to trigger re-renders for live time updates
   const [, setTick] = useState(0)
 
   useEffect(() => {
     document.title = 'In The Event Of My Death'
   }, [])
+
+  // Check for premium token in URL
+  useEffect(() => {
+    const token = searchParams.get('token')
+    if (token && token.length === 64) {
+      setPremiumToken(token)
+      // Validate the token
+      validateCapabilityToken(token)
+        .then((info) => {
+          setPremiumInfo(info)
+          if (!info.valid) {
+            setError(info.error || 'Invalid premium token')
+            setPremiumToken(null)
+            // Clear invalid token from URL
+            navigate('/', { replace: true })
+          }
+        })
+        .catch(() => {
+          setError('Failed to validate premium token')
+          setPremiumToken(null)
+          navigate('/', { replace: true })
+        })
+    }
+  }, [searchParams, navigate])
 
   useEffect(() => {
     // Only tick when on input step and using non-custom presets (they depend on current time)
@@ -239,25 +277,33 @@ export default function Home() {
         createRequest.expires_at = expiresAt.toISOString()
       }
 
-      if (ciphertextSize > MAX_POW_CIPHERTEXT_BYTES) {
-        throw new Error(
-          'This secret is too large. Please reduce the message size or file attachments.',
-        )
+      let response
+      if (premiumToken && premiumInfo?.valid) {
+        // Premium path: skip PoW, use capability token
+        setProgress('Creating premium secret...')
+        response = await createSecret(createRequest, { capabilityToken: premiumToken })
+      } else {
+        // Free path: require PoW
+        if (ciphertextSize > MAX_POW_CIPHERTEXT_BYTES) {
+          throw new Error(
+            'This secret is too large. Please reduce the message size or file attachments.',
+          )
+        }
+
+        // Request PoW challenge
+        setProgress('Requesting proof-of-work challenge...')
+        const challenge = await requestChallenge(payloadHash, ciphertextSize)
+
+        // Solve PoW
+        setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
+        const powProof = await solveChallenge(challenge, payloadHash, (iterations) => {
+          setProgress(`Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`)
+        })
+
+        createRequest.pow_proof = powProof
+        setProgress('Storing encrypted secret...')
+        response = await createSecret(createRequest)
       }
-
-      // Request PoW challenge
-      setProgress('Requesting proof-of-work challenge...')
-      const challenge = await requestChallenge(payloadHash, ciphertextSize)
-
-      // Solve PoW
-      setProgress(`Solving proof-of-work (difficulty: ${challenge.difficulty})...`)
-      const powProof = await solveChallenge(challenge, payloadHash, (iterations) => {
-        setProgress(`Solving proof-of-work... (${(iterations / 1000).toFixed(0)}k iterations)`)
-      })
-
-      createRequest.pow_proof = powProof
-      setProgress('Storing encrypted secret...')
-      const response = await createSecret(createRequest)
 
       // Step 5: Generate shareable links
       const encryptionKey = bytesToHex(keyBytes)
@@ -279,6 +325,31 @@ export default function Home() {
     setCopied(type)
     setTimeout(() => setCopied(null), 2000)
   }
+
+  const saveTokenForLater = useCallback(async () => {
+    if (!premiumToken) return
+    try {
+      await navigator.clipboard.writeText(premiumToken)
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2000)
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea')
+      textarea.value = premiumToken
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setTokenCopied(true)
+      setTimeout(() => setTokenCopied(false), 2000)
+    }
+  }, [premiumToken])
+
+  const clearPremiumToken = useCallback(() => {
+    setPremiumToken(null)
+    setPremiumInfo(null)
+    navigate('/', { replace: true })
+  }, [navigate])
 
   const shareLink = async (url: string) => {
     if (!navigator.share) return
@@ -310,6 +381,10 @@ export default function Home() {
     setCreatedExpiresAt(null)
     setLinks(null)
     setError(null)
+    // Clear premium token after use
+    setPremiumToken(null)
+    setPremiumInfo(null)
+    navigate('/', { replace: true })
   }
 
   const openAttachmentPicker = () => {
@@ -501,6 +576,27 @@ export default function Home() {
     <div className="home">
       <div className="hero-form">
         <p className="hero-title">In The Event Of My Death</p>
+
+        {premiumToken && premiumInfo?.valid && (
+          <div className="premium-banner">
+            <div className="premium-banner-content">
+              <span className="premium-badge">Premium Active</span>
+              <span className="premium-benefits">
+                Up to {Math.round((premiumInfo.max_file_size_bytes || 50_000_000) / 1_000_000)}MB
+                files, {Math.round((premiumInfo.max_expiry_days || 1825) / 365)}-year expiry
+              </span>
+            </div>
+            <div className="premium-banner-actions">
+              <button type="button" onClick={saveTokenForLater} className="button secondary small">
+                {tokenCopied ? 'Copied!' : 'Save token for later'}
+              </button>
+              <button type="button" onClick={clearPremiumToken} className="button text small">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="inline-form">
           <div
             className={`message-input-container${dragActive ? ' drag-active' : ''}`}

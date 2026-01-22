@@ -66,12 +66,47 @@ export default function PrivacyPolicy() {
       </section>
 
       <section className="info-section">
-        <h2>Cookies and Analytics</h2>
+        <h2>Analytics</h2>
         <p>
-          We use minimal or no cookies for this service. Any analytics we collect are aggregated and
-          anonymized to help us improve the service. We do not track individual users or sell any
-          data to third parties.
+          We use{' '}
+          <a href="https://umami.is" target="_blank" rel="noopener noreferrer">
+            Umami
+          </a>
+          , a privacy-focused, open-source analytics platform. Umami does not use cookies, does not
+          track users across websites, and does not collect personal information. All data is
+          aggregated and anonymized. We use analytics solely to understand how the service is used
+          and to improve it.
         </p>
+        <p>
+          We do not sell any data to third parties. Analytics data is hosted on our own
+          infrastructure at analytics.sparkswarm.com.
+        </p>
+      </section>
+
+      <section className="info-section">
+        <h2>Payments</h2>
+        <p>
+          Premium features are paid for using Bitcoin via{' '}
+          <a href="https://btcpayserver.org" target="_blank" rel="noopener noreferrer">
+            BTCPay Server
+          </a>
+          , a self-hosted, open-source payment processor. We do not collect credit card information
+          or require personal details to purchase premium features.
+        </p>
+        <ul>
+          <li>
+            <strong>Payment processor:</strong> BTCPay Server, self-hosted at pay.sparkswarm.com
+          </li>
+          <li>
+            <strong>What we store:</strong> Invoice IDs and capability tokens linking payments to
+            premium features. We do not store Bitcoin addresses or transaction details beyond what
+            is needed to verify payment completion.
+          </li>
+          <li>
+            <strong>Capability tokens:</strong> After payment, you receive a one-time-use token that
+            grants premium features. This token is not linked to any personal information.
+          </li>
+        </ul>
       </section>
 
       <section className="info-section">
