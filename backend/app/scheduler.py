@@ -9,7 +9,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.logging_config import get_logger
 from app.services.attachment_service import delete_orphaned_attachments
-from app.services.discord_service import send_error_alert_sync
+from app.services.matrix_service import send_error_alert_sync
 from app.services.pow_service import cleanup_expired_challenges
 from app.services.secret_service import (
     clear_secret_and_attachments,

@@ -40,9 +40,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"  # DEBUG, INFO, WARNING, ERROR
     log_format: str = "console"  # "console" or "json"
 
-    # Discord Webhooks
-    discord_feedback_webhook_url: str | None = None
-    discord_alerts_webhook_url: str | None = None
+    # Matrix Notifications
+    matrix_homeserver_url: str | None = None
+    matrix_access_token: str | None = None
+    matrix_room_id: str | None = None
 
     # Rate Limiting - Feedback
     rate_limit_feedback: str = "5/minute"

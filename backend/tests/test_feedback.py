@@ -1,10 +1,10 @@
-"""Tests for the feedback endpoint and Discord notification service."""
+"""Tests for the feedback endpoint and Matrix notification service."""
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.discord_service import send_feedback_notification
+from app.services.matrix_service import send_feedback_notification
 
 
 class TestFeedbackEndpoint:
@@ -104,19 +104,21 @@ class TestFeedbackEndpoint:
             )
 
 
-class TestDiscordNotificationService:
+class TestMatrixNotificationService:
     """Unit tests for send_feedback_notification."""
 
     @pytest.mark.asyncio
-    async def test_webhook_success(self):
-        """Test successful webhook notification."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_feedback_webhook_url = "https://discord.com/webhook"
+    async def test_notification_success(self):
+        """Test successful Matrix notification."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
                 mock_response.raise_for_status = AsyncMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 
@@ -127,26 +129,30 @@ class TestDiscordNotificationService:
                 assert result is True
 
     @pytest.mark.asyncio
-    async def test_webhook_not_configured(self):
-        """Test when webhook URL is not configured."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_feedback_webhook_url = None
+    async def test_notification_not_configured(self):
+        """Test when Matrix is not configured."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = None
+            mock_settings.matrix_access_token = None
+            mock_settings.matrix_room_id = None
 
             result = await send_feedback_notification(message="Test message", email=None)
 
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_webhook_failure_does_not_raise(self):
-        """Test that webhook failure doesn't raise exception."""
+    async def test_notification_failure_does_not_raise(self):
+        """Test that API failure doesn't raise exception."""
         from unittest.mock import MagicMock
 
         import httpx
 
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_feedback_webhook_url = "https://discord.com/webhook"
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 # Create a proper mock response that raises on raise_for_status
                 mock_request = MagicMock()
                 mock_response = MagicMock()
@@ -159,7 +165,7 @@ class TestDiscordNotificationService:
 
                 mock_response.raise_for_status = raise_for_status
 
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 

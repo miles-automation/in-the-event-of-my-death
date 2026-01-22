@@ -1,18 +1,18 @@
-"""Tests for Discord error alert functionality."""
+"""Tests for Matrix error alert functionality."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
-from app.services.discord_service import (
+from app.services.matrix_service import (
     reset_alert_rate_limit,
     send_error_alert,
     send_error_alert_sync,
 )
 
 
-class TestDiscordErrorAlerts:
+class TestMatrixErrorAlerts:
     """Unit tests for send_error_alert."""
 
     @pytest.fixture(autouse=True)
@@ -23,13 +23,15 @@ class TestDiscordErrorAlerts:
     @pytest.mark.asyncio
     async def test_send_error_alert_success(self):
         """Test successful error alert notification."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = "https://discord.com/webhook"
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
                 mock_response.raise_for_status = AsyncMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 
@@ -42,18 +44,20 @@ class TestDiscordErrorAlerts:
                 )
 
                 assert result is True
-                # Verify the webhook was called with embed format
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                # Verify the Matrix API was called
+                call_args = mock_client.return_value.__aenter__.return_value.put.call_args
                 payload = call_args.kwargs["json"]
-                assert "embeds" in payload
-                assert payload["embeds"][0]["title"] == "Server Error Alert"
-                assert payload["embeds"][0]["color"] == 15158332  # Red
+                assert payload["msgtype"] == "m.text"
+                assert "Server Error Alert" in payload["body"]
+                assert "ValueError" in payload["body"]
 
     @pytest.mark.asyncio
     async def test_send_error_alert_not_configured(self):
-        """Test when webhook URL is not configured."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = None
+        """Test when Matrix is not configured."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = None
+            mock_settings.matrix_access_token = None
+            mock_settings.matrix_room_id = None
 
             result = await send_error_alert(
                 error_type="ValueError",
@@ -65,13 +69,15 @@ class TestDiscordErrorAlerts:
     @pytest.mark.asyncio
     async def test_send_error_alert_rate_limited(self):
         """Test that second alert within cooldown is rate limited."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = "https://discord.com/webhook"
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
                 mock_response.raise_for_status = AsyncMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 
@@ -89,16 +95,18 @@ class TestDiscordErrorAlerts:
                 )
                 assert result2 is False
 
-                # Verify only one webhook call was made
-                assert mock_client.return_value.__aenter__.return_value.post.call_count == 1
+                # Verify only one API call was made
+                assert mock_client.return_value.__aenter__.return_value.put.call_count == 1
 
     @pytest.mark.asyncio
     async def test_send_error_alert_failure_graceful(self):
-        """Test that webhook failure doesn't raise exception."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = "https://discord.com/webhook"
+        """Test that API failure doesn't raise exception."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_request = MagicMock()
                 mock_response = MagicMock()
                 mock_response.status_code = 500
@@ -110,7 +118,7 @@ class TestDiscordErrorAlerts:
 
                 mock_response.raise_for_status = raise_for_status
 
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 
@@ -125,13 +133,15 @@ class TestDiscordErrorAlerts:
     @pytest.mark.asyncio
     async def test_send_error_alert_with_context(self):
         """Test alert with additional context fields."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = "https://discord.com/webhook"
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
                 mock_response.raise_for_status = AsyncMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 
@@ -142,22 +152,22 @@ class TestDiscordErrorAlerts:
                 )
 
                 assert result is True
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_client.return_value.__aenter__.return_value.put.call_args
                 payload = call_args.kwargs["json"]
-                fields = payload["embeds"][0]["fields"]
-                field_names = [f["name"] for f in fields]
-                assert "job_name" in field_names
+                assert "job_name" in payload["body"]
 
     @pytest.mark.asyncio
     async def test_send_error_alert_truncates_long_message(self):
         """Test that long messages are truncated."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = "https://discord.com/webhook"
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.AsyncClient") as mock_client:
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
                 mock_response.raise_for_status = AsyncMock()
-                mock_client.return_value.__aenter__.return_value.post = AsyncMock(
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
                     return_value=mock_response
                 )
 
@@ -169,24 +179,24 @@ class TestDiscordErrorAlerts:
                 )
 
                 assert result is True
-                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                call_args = mock_client.return_value.__aenter__.return_value.put.call_args
                 payload = call_args.kwargs["json"]
-                message_field = next(
-                    f for f in payload["embeds"][0]["fields"] if f["name"] == "Message"
-                )
-                # Should be truncated to 500 chars + "..."
-                assert len(message_field["value"]) == 503
-                assert message_field["value"].endswith("...")
+                # Message should be truncated (500 chars + "...")
+                assert "..." in payload["body"]
+                # Full 1000-char message should NOT be in the body
+                assert long_message not in payload["body"]
 
     def test_send_error_alert_sync_wrapper(self):
         """Test sync wrapper for scheduler jobs."""
-        with patch("app.services.discord_service.settings") as mock_settings:
-            mock_settings.discord_alerts_webhook_url = "https://discord.com/webhook"
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
 
-            with patch("app.services.discord_service.httpx.Client") as mock_client:
+            with patch("app.services.matrix_service.httpx.Client") as mock_client:
                 mock_response = MagicMock()
                 mock_response.raise_for_status = MagicMock()
-                mock_client.return_value.__enter__.return_value.post = MagicMock(
+                mock_client.return_value.__enter__.return_value.put = MagicMock(
                     return_value=mock_response
                 )
 
@@ -209,7 +219,7 @@ class TestExceptionHandlerAlerts:
 
     @pytest.mark.asyncio
     async def test_500_exception_triggers_alert(self):
-        """Test that unhandled exceptions trigger Discord alerts."""
+        """Test that unhandled exceptions trigger Matrix alerts."""
         from unittest.mock import MagicMock
 
         from fastapi import Request
@@ -247,7 +257,7 @@ class TestExceptionHandlerAlerts:
 
     @pytest.mark.asyncio
     async def test_429_rate_limit_triggers_alert(self):
-        """Test that rate limit exceeded triggers Discord alerts."""
+        """Test that rate limit exceeded triggers Matrix alerts."""
         from unittest.mock import MagicMock
 
         from fastapi import Request

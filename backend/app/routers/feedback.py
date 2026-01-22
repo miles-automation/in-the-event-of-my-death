@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from app.config import settings
 from app.middleware.rate_limit import limiter
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
-from app.services.discord_service import send_feedback_notification
+from app.services.matrix_service import send_feedback_notification
 
 router = APIRouter()
 logger = structlog.get_logger()
@@ -19,10 +19,10 @@ async def submit_feedback(
     """
     Submit user feedback.
 
-    Feedback is forwarded to Discord webhook for visibility.
+    Feedback is forwarded to Matrix for visibility.
     No database storage - just notification.
     """
-    # Send to Discord (best effort - don't fail if webhook fails)
+    # Send to Matrix (best effort - don't fail if notification fails)
     await send_feedback_notification(
         message=feedback.message,
         email=feedback.email,
