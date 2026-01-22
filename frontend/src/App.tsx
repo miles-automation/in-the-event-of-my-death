@@ -5,6 +5,7 @@ import EditSecret from './pages/EditSecret'
 import About from './pages/About'
 import Feedback from './pages/Feedback'
 import Pricing from './pages/Pricing'
+import PaymentSuccess from './pages/PaymentSuccess'
 import WhyBitcoin from './pages/WhyBitcoin'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
@@ -25,6 +26,7 @@ function App() {
             <Route path="/about" element={<About />} />
             <Route path="/feedback" element={<Feedback />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/why-bitcoin" element={<WhyBitcoin />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />

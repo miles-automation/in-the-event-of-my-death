@@ -1,10 +1,21 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 
+// BTCPay PoS URL - configure via environment variable
+const BTCPAY_POS_URL = import.meta.env.VITE_BTCPAY_POS_URL || ''
+
 export default function Pricing() {
   useEffect(() => {
     document.title = 'Pricing | In The Event Of My Death'
   }, [])
+
+  const handlePremiumClick = () => {
+    if (BTCPAY_POS_URL) {
+      window.location.href = BTCPAY_POS_URL
+    }
+  }
+
+  const isPremiumEnabled = !!BTCPAY_POS_URL
 
   return (
     <div className="pricing">
@@ -31,13 +42,17 @@ export default function Pricing() {
           <p className="tier-price">$1</p>
           <p className="tier-price-note">one-time payment</p>
           <ul className="tier-features">
-            <li>Up to 500MB file attachments</li>
+            <li>Up to 50MB file attachments</li>
             <li>5-year maximum expiry</li>
             <li>End-to-end encryption</li>
             <li>No account required</li>
           </ul>
-          <button className="button primary" disabled>
-            Coming Soon
+          <button
+            className="button primary"
+            onClick={handlePremiumClick}
+            disabled={!isPremiumEnabled}
+          >
+            {isPremiumEnabled ? 'Get Premium' : 'Coming Soon'}
           </button>
         </div>
       </div>
