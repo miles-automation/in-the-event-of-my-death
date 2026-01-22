@@ -2,6 +2,10 @@ FROM node:current-alpine AS build
 
 WORKDIR /app
 
+# Build-time environment variables for Vite
+ARG VITE_BTCPAY_POS_URL
+ARG VITE_BASE_URL=https://ieomd.com
+
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
