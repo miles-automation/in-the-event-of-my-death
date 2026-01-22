@@ -1196,6 +1196,106 @@ input[type='email']:focus {
   margin-bottom: 1.25rem;
 }
 
+/* Pricing page */
+.pricing {
+  text-align: center;
+}
+
+.pricing h1 {
+  font-size: 2rem;
+  margin: 0 0 0.5rem;
+  color: var(--text-primary);
+}
+
+.pricing .subtitle {
+  color: var(--text-secondary);
+  margin: 0 0 2rem;
+}
+
+.pricing-tiers {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.tier {
+  background: var(--bg-secondary);
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.tier h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+  color: var(--text-primary);
+}
+
+.tier-price {
+  font-size: 2.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.tier-price-note {
+  font-size: 0.875rem;
+  color: var(--text-subtle);
+  margin: 0 0 1rem;
+}
+
+.tier-features {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  text-align: left;
+}
+
+.tier-features li {
+  padding: 0.5rem 0;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tier-features li:last-child {
+  border-bottom: none;
+}
+
+.tier-premium {
+  border-color: var(--accent-primary);
+  border-width: 2px;
+}
+
+/* Why Bitcoin page */
+.why-bitcoin {
+  text-align: center;
+}
+
+.why-bitcoin h1 {
+  font-size: 2rem;
+  margin: 0 0 0.5rem;
+  color: var(--text-primary);
+}
+
+.why-bitcoin .subtitle {
+  color: var(--text-secondary);
+  margin: 0 0 2rem;
+}
+
+.why-bitcoin code {
+  background: var(--bg-muted);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.back-link {
+  margin-top: 2rem;
+  text-align: center;
+}
+
 /* About page */
 .about {
   text-align: center;
@@ -1280,6 +1380,14 @@ input[type='email']:focus {
     right: 0.5rem;
     font-size: 0.65rem;
     padding: 0.25rem 0.5rem;
+  }
+
+  .pricing-tiers {
+    grid-template-columns: 1fr;
+  }
+
+  .tier {
+    padding: 1.5rem;
   }
 
   .hero-form {

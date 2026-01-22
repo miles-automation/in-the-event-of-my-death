@@ -4,6 +4,8 @@ import ViewSecret from './pages/ViewSecret'
 import EditSecret from './pages/EditSecret'
 import About from './pages/About'
 import Feedback from './pages/Feedback'
+import Pricing from './pages/Pricing'
+import WhyBitcoin from './pages/WhyBitcoin'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import './App.css'
@@ -22,6 +24,8 @@ function App() {
             <Route path="/edit" element={<EditSecret />} />
             <Route path="/about" element={<About />} />
             <Route path="/feedback" element={<Feedback />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/why-bitcoin" element={<WhyBitcoin />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
           </Routes>
@@ -31,6 +35,8 @@ function App() {
           <div className="footer-content">
             <p className="footer-line">
               <Link to="/about">About</Link>
+              <span className="footer-separator">•</span>
+              <Link to="/pricing">Pricing</Link>
               <span className="footer-separator">•</span>
               <Link to="/feedback">Feedback</Link>
               <span className="footer-separator">•</span>
