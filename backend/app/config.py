@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     matrix_access_token: str | None = None
     matrix_room_id: str | None = None
 
+    # Environment identifier for alerts
+    environment: str = "development"
+
     # Rate Limiting - Feedback
     rate_limit_feedback: str = "5/minute"
 

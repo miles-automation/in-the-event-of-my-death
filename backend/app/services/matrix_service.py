@@ -17,6 +17,13 @@ _alert_cooldown = timedelta(seconds=30)
 _alert_lock = threading.Lock()
 
 
+def _env_prefix() -> tuple[str, str]:
+    """Return (emoji, env_name) for alert formatting."""
+    env = settings.environment.lower()
+    emoji = {"production": "🔴", "staging": "🟡", "development": "🟢"}.get(env, "⚪")
+    return emoji, settings.environment
+
+
 def _should_send_alert() -> bool:
     """Check if we should send an alert (rate limiting)."""
     global _last_alert_time
@@ -64,7 +71,8 @@ async def send_feedback_notification(message: str, email: str | None) -> bool:
         return False
 
     contact = email if email else "not provided"
-    body = f"📬 **New Feedback**\n\n{message}\n\n**Contact:** {contact}"
+    env_emoji, env_name = _env_prefix()
+    body = f"{env_emoji} 📬 **New Feedback** [{env_name}]\n\n{message}\n\n**Contact:** {contact}"
 
     try:
         async with httpx.AsyncClient() as client:
@@ -124,7 +132,12 @@ async def send_error_alert(
         return False
 
     # Build alert message
-    lines = ["🚨 **Server Error Alert**", f"**Type:** {error_type}"]
+    env_emoji, env_name = _env_prefix()
+    lines = [
+        f"{env_emoji} 🚨 **Server Error Alert** [{env_name}]",
+        f"**Environment:** {env_name}",
+        f"**Type:** {error_type}",
+    ]
     if status_code:
         lines.append(f"**Status:** {status_code}")
     if path:
@@ -199,7 +212,12 @@ def send_error_alert_sync(
         return False
 
     # Build alert message
-    lines = ["🚨 **Server Error Alert**", f"**Type:** {error_type}"]
+    env_emoji, env_name = _env_prefix()
+    lines = [
+        f"{env_emoji} 🚨 **Server Error Alert** [{env_name}]",
+        f"**Environment:** {env_name}",
+        f"**Type:** {error_type}",
+    ]
     if status_code:
         lines.append(f"**Status:** {status_code}")
     if path:

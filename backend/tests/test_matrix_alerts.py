@@ -27,6 +27,7 @@ class TestMatrixErrorAlerts:
             mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
             mock_settings.matrix_access_token = "test-token"
             mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "development"
 
             with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
@@ -73,6 +74,7 @@ class TestMatrixErrorAlerts:
             mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
             mock_settings.matrix_access_token = "test-token"
             mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "development"
 
             with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
@@ -105,6 +107,7 @@ class TestMatrixErrorAlerts:
             mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
             mock_settings.matrix_access_token = "test-token"
             mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "development"
 
             with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_request = MagicMock()
@@ -137,6 +140,7 @@ class TestMatrixErrorAlerts:
             mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
             mock_settings.matrix_access_token = "test-token"
             mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "development"
 
             with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
@@ -163,6 +167,7 @@ class TestMatrixErrorAlerts:
             mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
             mock_settings.matrix_access_token = "test-token"
             mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "development"
 
             with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
                 mock_response = AsyncMock()
@@ -192,6 +197,7 @@ class TestMatrixErrorAlerts:
             mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
             mock_settings.matrix_access_token = "test-token"
             mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "development"
 
             with patch("app.services.matrix_service.httpx.Client") as mock_client:
                 mock_response = MagicMock()
@@ -207,6 +213,85 @@ class TestMatrixErrorAlerts:
                 )
 
                 assert result is True
+
+    @pytest.mark.asyncio
+    async def test_send_error_alert_includes_environment(self):
+        """Test that alerts include the environment identifier."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "staging"
+
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
+                mock_response = AsyncMock()
+                mock_response.raise_for_status = AsyncMock()
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
+                    return_value=mock_response
+                )
+
+                result = await send_error_alert(
+                    error_type="ValueError",
+                    message="Test error",
+                )
+
+                assert result is True
+                call_args = mock_client.return_value.__aenter__.return_value.put.call_args
+                payload = call_args.kwargs["json"]
+                # Verify environment appears in message
+                assert "staging" in payload["body"]
+                assert "Environment" in payload["body"]
+                # Verify staging emoji (yellow circle)
+                assert "🟡" in payload["body"]
+
+    @pytest.mark.asyncio
+    async def test_send_error_alert_production_uses_red_emoji(self):
+        """Test that production alerts use red emoji."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "production"
+
+            with patch("app.services.matrix_service.httpx.AsyncClient") as mock_client:
+                mock_response = AsyncMock()
+                mock_response.raise_for_status = AsyncMock()
+                mock_client.return_value.__aenter__.return_value.put = AsyncMock(
+                    return_value=mock_response
+                )
+
+                await send_error_alert(error_type="Error", message="Test")
+
+                call_args = mock_client.return_value.__aenter__.return_value.put.call_args
+                payload = call_args.kwargs["json"]
+                assert "🔴" in payload["body"]
+                assert "production" in payload["body"]
+
+    def test_send_error_alert_sync_includes_environment(self):
+        """Test that sync alerts include the environment identifier."""
+        with patch("app.services.matrix_service.settings") as mock_settings:
+            mock_settings.matrix_homeserver_url = "https://chat.sparkswarm.com"
+            mock_settings.matrix_access_token = "test-token"
+            mock_settings.matrix_room_id = "!testroom:chat.sparkswarm.com"
+            mock_settings.environment = "production"
+
+            with patch("app.services.matrix_service.httpx.Client") as mock_client:
+                mock_response = MagicMock()
+                mock_response.raise_for_status = MagicMock()
+                mock_client.return_value.__enter__.return_value.put = MagicMock(
+                    return_value=mock_response
+                )
+
+                result = send_error_alert_sync(
+                    error_type="Scheduler Job Failed",
+                    message="Test failure",
+                )
+
+                assert result is True
+                call_args = mock_client.return_value.__enter__.return_value.put.call_args
+                payload = call_args.kwargs["json"]
+                assert "production" in payload["body"]
+                assert "🔴" in payload["body"]
 
 
 class TestExceptionHandlerAlerts:
