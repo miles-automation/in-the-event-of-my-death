@@ -40,6 +40,14 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
+# Optional: cryptography for attachment encryption tests
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    HAS_CRYPTO = True
+except ImportError:
+    HAS_CRYPTO = False
+
 SkipCheck = Callable[["SmokeContext"], str | None]
 
 
@@ -431,6 +439,50 @@ def generate_test_secret() -> tuple[str, str, str, str]:
     return ciphertext_b64, iv_b64, auth_tag_b64, payload_hash
 
 
+def encrypt_aes_gcm(plaintext: bytes, key: bytes) -> tuple[str, str, str]:
+    """
+    Encrypt bytes with AES-256-GCM.
+
+    Returns (ciphertext_b64, iv_b64, auth_tag_b64).
+    Requires cryptography library.
+    """
+    iv = secrets.token_bytes(12)
+    aesgcm = AESGCM(key)
+    # AESGCM.encrypt returns ciphertext + tag concatenated (tag is last 16 bytes)
+    ct_with_tag = aesgcm.encrypt(iv, plaintext, None)
+    ciphertext = ct_with_tag[:-16]
+    auth_tag = ct_with_tag[-16:]
+    return (
+        base64.b64encode(ciphertext).decode(),
+        base64.b64encode(iv).decode(),
+        base64.b64encode(auth_tag).decode(),
+    )
+
+
+def generate_encrypted_attachment(key: bytes) -> dict[str, Any]:
+    """
+    Generate encrypted attachment payload for upload testing.
+
+    Returns dict suitable for POST /api/v1/attachments/upload.
+    """
+    # Fake file content (small for smoke test)
+    blob = b"smoke-test-attachment-" + secrets.token_bytes(100)
+    metadata = json.dumps({"name": "smoke-test.txt", "type": "text/plain"}).encode()
+
+    blob_ct, blob_iv, blob_tag = encrypt_aes_gcm(blob, key)
+    meta_ct, meta_iv, meta_tag = encrypt_aes_gcm(metadata, key)
+
+    return {
+        "encrypted_blob": blob_ct,
+        "blob_iv": blob_iv,
+        "blob_auth_tag": blob_tag,
+        "encrypted_metadata": meta_ct,
+        "metadata_iv": meta_iv,
+        "metadata_auth_tag": meta_tag,
+        "position": 0,
+    }
+
+
 @dataclass
 class SmokeContext:
     client: HttpClient
@@ -442,6 +494,10 @@ class SmokeContext:
     unlock_at: datetime | None = None
     expires_at: datetime | None = None
     decrypt_status: dict[str, Any] | None = None
+
+    # Attachment fields for file upload smoke test
+    attachment_id: str | None = None
+    attachment_key: bytes | None = None
 
     def require_edit_token(self) -> str:
         if not self.edit_token:
@@ -537,6 +593,31 @@ def step_web(ctx: SmokeContext) -> None:
     check_web_serving(ctx.client)
 
 
+def step_upload_attachment(ctx: SmokeContext) -> None:
+    """Upload an encrypted attachment before secret creation."""
+    if not HAS_CRYPTO:
+        log("cryptography not installed; skipping attachment upload")
+        return
+
+    log("Generating encrypted attachment")
+    ctx.attachment_key = secrets.token_bytes(32)
+    payload = generate_encrypted_attachment(ctx.attachment_key)
+
+    log("Uploading attachment")
+    try:
+        result = ctx.client.api_json("POST", "/attachments/upload", data=payload)
+        ctx.attachment_id = result["attachment_id"]
+        storage_key = result.get("storage_key", "")
+        log(f"Attachment uploaded: id={ctx.attachment_id}, key={storage_key[:30]}...")
+    except ApiError as e:
+        if e.status_code == 503:
+            # Object storage not enabled on this environment
+            log("Object storage not enabled; skipping attachment tests")
+            ctx.attachment_id = None
+            return
+        raise
+
+
 def step_create_secret(ctx: SmokeContext) -> None:
     log("Generating test secret data")
     ciphertext_b64, iv_b64, auth_tag_b64, payload_hash = generate_test_secret()
@@ -576,6 +657,11 @@ def step_create_secret(ctx: SmokeContext) -> None:
             "payload_hash": payload_hash,
         },
     }
+
+    # Include attachment if one was uploaded
+    if ctx.attachment_id:
+        create_payload["attachment_ids"] = [ctx.attachment_id]
+        log(f"Including attachment: {ctx.attachment_id}")
 
     try:
         secret = ctx.client.api_json("POST", "/secrets", data=create_payload)
@@ -803,6 +889,18 @@ def step_retrieve_available_once(ctx: SmokeContext) -> None:
         if not retrieved.get(field):
             raise RuntimeError(f"Retrieve response missing {field}")
 
+    # Verify attachment if one was uploaded
+    if ctx.attachment_id:
+        attachments = retrieved.get("attachments", [])
+        if not attachments:
+            raise RuntimeError("Expected attachment in retrieve response but got none")
+        att = attachments[0]
+        if not att.get("presigned_url"):
+            raise RuntimeError("Attachment missing presigned_url")
+        if not att.get("storage_key"):
+            raise RuntimeError("Attachment missing storage_key")
+        log(f"Attachment verified: presigned URL present for {att.get('storage_key', '')[:30]}...")
+
     after = ctx.client.api_json(
         "GET",
         "/secrets/status",
@@ -891,6 +989,7 @@ def main() -> int:
                         step_web,
                         skip_reason=skip_web_disabled if args.skip_web else None,
                     ),
+                    Step("upload attachment", step_upload_attachment),
                     Step("create secret", step_create_secret),
                     Step("edit status", step_edit_status),
                     Step("edit flow", step_edit_flow),
