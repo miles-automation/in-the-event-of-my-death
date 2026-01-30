@@ -1,328 +1,167 @@
-name: Deploy (Ephemeral Staging)
+name: Ephemeral Staging
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to deploy (branch, tag, or SHA)"
+        description: "Git ref to stage (branch, tag, or SHA)"
         required: true
         default: "main"
-      region:
-        description: "DigitalOcean region"
-        required: true
-        default: "nyc3"
-      size:
-        description: "DigitalOcean droplet size"
-        required: true
-        default: "s-1vcpu-1gb"
-      image:
-        description: "DigitalOcean base image slug"
-        required: true
-        default: "ubuntu-24-04-x64"
-      vpc_uuid:
-        description: "DigitalOcean VPC UUID"
-        required: true
-        default: "8116bba4-063f-415f-ad8d-12a13bb8b2bd"
-      ttl_minutes:
-        description: "Max time to keep staging droplet (best-effort; cleanup job is the backstop)"
-        required: true
-        default: "180"
-      destroy_when_done:
-        description: "Destroy droplet at end of run"
+      keep:
+        description: "Keep droplet for debugging"
         required: true
         type: choice
-        default: "true"
-        options:
-          - "true"
-          - "false"
+        default: "false"
+        options: ["false", "true"]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
-  packages: write
-
-env:
-  DEPLOY_REF: ${{ github.event.inputs.ref || github.sha }}
-  REGION: ${{ github.event.inputs.region || 'nyc3' }}
-  SIZE: ${{ github.event.inputs.size || 's-1vcpu-1gb' }}
-  IMAGE: ${{ github.event.inputs.image || 'ubuntu-24-04-x64' }}
-  VPC_UUID: ${{ github.event.inputs.vpc_uuid || '8116bba4-063f-415f-ad8d-12a13bb8b2bd' }}
-  TTL_MINUTES: ${{ github.event.inputs.ttl_minutes || '180' }}
-  DESTROY_WHEN_DONE: ${{ github.event.inputs.destroy_when_done || 'true' }}
+  issues: write
+  pull-requests: write
 
 concurrency:
-  group: ephemeral-staging-${{ github.ref }}
+  group: ieomd-ephemeral-staging-${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  build_images:
+  stage:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '/stage') && github.actor == github.repository_owner)
     runs-on: ubuntu-latest
-    outputs:
-      backend_image: ${{ steps.tags.outputs.backend_image }}
-      web_image: ${{ steps.tags.outputs.web_image }}
-      short_sha: ${{ steps.meta.outputs.short_sha }}
-      tag: ${{ steps.meta.outputs.tag }}
+    env:
+      SPARK_SWARM_API_URL: https://swarm.sparkswarm.com/api/v1
     steps:
-      - name: Checkout
+      - name: Resolve PR ref (issue_comment only)
+        if: ${{ github.event_name == 'issue_comment' }}
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            core.setOutput('pr_number', String(prNumber));
+            core.setOutput('ref', pr.data.head.sha);
+
+      - name: Resolve ref (workflow_dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        id: manual
+        run: |
+          echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout (target ref)
         uses: actions/checkout@v4
         with:
-          ref: ${{ env.DEPLOY_REF }}
+          ref: ${{ steps.pr.outputs.ref || steps.manual.outputs.ref }}
 
       - name: Compute image tag
         id: meta
+        shell: bash
         run: |
           short_sha="$(git rev-parse --short=7 HEAD)"
-          tag="ephem-${short_sha}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [[ "${{ github.event_name }}" == "issue_comment" ]]; then
+            echo "tag=pr-${{ steps.pr.outputs.pr_number }}-${short_sha}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute image refs
-        id: tags
-        run: |
-          tag="${{ steps.meta.outputs.tag }}"
-          echo "backend_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/in-the-event-of-my-death-backend:${tag}" >> "$GITHUB_OUTPUT"
-          echo "web_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/in-the-event-of-my-death-web:${tag}" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push backend
+      - name: Build image (linux/amd64)
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: backend/Dockerfile
-          push: true
-          tags: ${{ steps.tags.outputs.backend_image }}
+          file: Dockerfile
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: ieomd-app:${{ steps.meta.outputs.tag }}
 
-      - name: Build and push web
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: frontend/Dockerfile
-          push: true
-          tags: ${{ steps.tags.outputs.web_image }}
-
-      - name: Summary
+      - name: Export image tarball
         run: |
-          echo "## Ephemeral staging images" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Ref:** \`${{ env.DEPLOY_REF }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Commit:** \`${{ steps.meta.outputs.short_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Backend:** \`${{ steps.tags.outputs.backend_image }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Web:** \`${{ steps.tags.outputs.web_image }}\`" >> "$GITHUB_STEP_SUMMARY"
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build_images
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.DEPLOY_REF }}
+          docker save "ieomd-app:${{ steps.meta.outputs.tag }}" -o image.tar
 
       - name: Install doctl
         uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DO_API_TOKEN }}
 
-      - name: Generate SSH key
-        run: |
-          ssh-keygen -t ed25519 -N "" -f ./ephemeral_staging_key
-          chmod 600 ./ephemeral_staging_key
+      - name: Checkout Spark Swarm runner
+        uses: actions/checkout@v4
+        with:
+          repository: richmiles/spark-swarm
+          path: spark-swarm
+          ssh-key: ${{ secrets.SPARK_SWARM_DEPLOY_KEY }}
+          fetch-depth: 1
 
-      - name: Upload SSH key artifact (when keeping droplet)
-        if: ${{ env.DESTROY_WHEN_DONE != 'true' }}
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Stage
+        id: stage
+        env:
+          SPARK_SWARM_API_KEY: ${{ secrets.SPARK_SWARM_API_KEY }}
+        run: |
+          image="ieomd-app:${{ steps.meta.outputs.tag }}"
+          ref="${{ steps.pr.outputs.ref || steps.manual.outputs.ref }}"
+          keep="${{ github.event.inputs.keep || 'false' }}"
+
+          args=(
+            --pack deploy/pack.toml
+            --image "$image"
+            --image-tar image.tar
+            --ref "$ref"
+            --summary-out stage-summary.json
+          )
+          if [[ "$keep" == "true" ]]; then
+            args+=(--keep)
+          fi
+
+          python3 spark-swarm/runner/ephemeral_stage.py "${args[@]}"
+
+      - name: Upload summary
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: ephemeral-staging-ssh-key
-          path: |
-            ./ephemeral_staging_key
-            ./ephemeral_staging_key.pub
-          retention-days: 1
+          name: stage-summary
+          path: stage-summary.json
+          retention-days: 7
 
-      - name: Create DigitalOcean SSH key
-        id: do_ssh_key
-        run: |
-          name="gh-ephemeral-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          key_id="$(doctl compute ssh-key create "$name" --public-key "$(cat ./ephemeral_staging_key.pub)" --format ID --no-header)"
-          echo "id=$key_id" >> "$GITHUB_OUTPUT"
-
-      - name: Create droplet
-        id: droplet
-        run: |
-          name="ieomd-ephemeral-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          droplet_id="$(doctl compute droplet create "$name" \
-            --region "${{ env.REGION }}" \
-            --size "${{ env.SIZE }}" \
-            --image "${{ env.IMAGE }}" \
-            --vpc-uuid "${{ env.VPC_UUID }}" \
-            --ssh-keys "${{ steps.do_ssh_key.outputs.id }}" \
-            --tag-names "ieomd,staging,ephemeral-staging,run-${GITHUB_RUN_ID}" \
-            --format ID \
-            --no-header \
-            --wait)"
-          echo "id=$droplet_id" >> "$GITHUB_OUTPUT"
-
-      - name: Create firewall (best-effort)
-        id: firewall
-        continue-on-error: true
-        run: |
-          runner_ip="$(curl -fsSL https://api.ipify.org)"
-          fw_name="fw-ephemeral-staging-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          fw_id="$(doctl compute firewall create \
-            --name "$fw_name" \
-            --inbound-rules "protocol:tcp,ports:22,address:${runner_ip}/32 protocol:tcp,ports:80,address:0.0.0.0/0 protocol:tcp,ports:443,address:0.0.0.0/0" \
-            --outbound-rules "protocol:tcp,ports:1-65535,address:0.0.0.0/0 protocol:udp,ports:1-65535,address:0.0.0.0/0" \
-            --droplet-ids "${{ steps.droplet.outputs.id }}" \
-            --format ID \
-            --no-header)"
-          echo "id=$fw_id" >> "$GITHUB_OUTPUT"
-
-      - name: Lookup droplet IP
-        id: ip
-        run: |
-          ip="$(doctl compute droplet get "${{ steps.droplet.outputs.id }}" --format PublicIPv4 --no-header)"
-          echo "ip=$ip" >> "$GITHUB_OUTPUT"
-          echo "host=${ip}.sslip.io" >> "$GITHUB_OUTPUT"
-          echo "url=http://${ip}.sslip.io" >> "$GITHUB_OUTPUT"
-
-      - name: Wait for SSH
-        run: |
-          ip="${{ steps.ip.outputs.ip }}"
-          for i in $(seq 1 60); do
-            if ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" "echo ok" >/dev/null 2>&1; then
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "SSH never became ready for ${ip}" >&2
-          exit 1
-
-      - name: Bootstrap droplet
-        run: |
-          ip="${{ steps.ip.outputs.ip }}"
-          host="${{ steps.ip.outputs.host }}"
-          backend_image="${{ needs.build_images.outputs.backend_image }}"
-          web_image="${{ needs.build_images.outputs.web_image }}"
-
-          scp -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
-            deploy/docker-compose.yml deploy/remote/ieomd-deploy \
-            "root@${ip}:/tmp/"
-
-          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 \
-            "root@${ip}" \
-            "HOST='${host}' GHCR_OWNER='${GITHUB_REPOSITORY_OWNER}' BACKEND_IMAGE='${backend_image}' WEB_IMAGE='${web_image}' bash -se" <<'EOF'
-          set -euo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-
-          if command -v cloud-init >/dev/null 2>&1; then
-            cloud-init status --wait || true
-          fi
-
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl docker.io docker-compose-v2 openssl
-          systemctl enable --now docker
-
-          mkdir -p /opt/ieomd /var/lib/ieomd /var/backups/ieomd
-          mv /tmp/docker-compose.yml /opt/ieomd/docker-compose.yml
-          mv /tmp/ieomd-deploy /usr/local/bin/ieomd-deploy
-          chmod +x /usr/local/bin/ieomd-deploy
-
-          internal_api_key="$(openssl rand -hex 32)"
-          printf '%s\n' \
-            "SITE_HOST=${HOST}" \
-            "SITE_ADDRESS=http://${HOST}" \
-            "CORS_ORIGINS='[\"http://${HOST}\"]'" \
-            "DATA_DIR=/var/lib/ieomd" \
-            "DATABASE_URL=sqlite:////data/secrets-staging.db" \
-            "GHCR_OWNER=${GHCR_OWNER}" \
-            "INTERNAL_API_KEY=${internal_api_key}" \
-            > /opt/ieomd/.env
-
-          /usr/local/bin/ieomd-deploy deploy --dir /opt/ieomd --backend-image "${BACKEND_IMAGE}" --web-image "${WEB_IMAGE}"
-          EOF
-
-      - name: Smoke test
-        run: |
-          echo "Waiting for /health to become healthy..."
-          base="${{ steps.ip.outputs.url }}"
-          last_code=""
-          last_body=""
-          ready="0"
-          for i in $(seq 1 90); do
-            raw="$(curl -sS -m 10 "${base}/health" -w '\nHTTP_STATUS:%{http_code}\n' || true)"
-            last_code="$(printf '%s' "$raw" | sed -n 's/^HTTP_STATUS://p' | tail -n 1)"
-            last_body="$(printf '%s' "$raw" | sed '/^HTTP_STATUS:/d')"
-            if [[ "$last_code" == "200" ]] && echo "$last_body" | python3 -c 'import json,sys; sys.exit(0 if json.load(sys.stdin).get("status") == "healthy" else 1)' 2>/dev/null; then
-              ready="1"
-              break
-            fi
-            sleep 4
-          done
-          if [[ "$ready" != "1" ]]; then
-            echo "Health never became healthy (last_code=${last_code})" >&2
-            echo "Body preview:" >&2
-            printf '%s' "$last_body" | head -c 400 >&2 || true
-            echo "" >&2
-            exit 1
-          fi
-          python3 scripts/smoke-test.py "${{ steps.ip.outputs.url }}"
-
-      - name: Diagnostics (on failure)
-        if: ${{ failure() }}
-        continue-on-error: true
-        run: |
-          ip="${{ steps.ip.outputs.ip }}"
-          echo "=== remote docker compose ps ==="
-          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
-            "cd /opt/ieomd && docker compose ps || true"
-          echo "=== remote backend logs (tail) ==="
-          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
-            "cd /opt/ieomd && docker compose logs --no-color --tail 200 backend || true"
-          echo "=== remote web logs (tail) ==="
-          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
-            "cd /opt/ieomd && docker compose logs --no-color --tail 200 web || true"
-          echo "=== remote curl localhost health ==="
-          ssh -i ./ephemeral_staging_key -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 "root@${ip}" \
-            "curl -sS -m 5 -v http://127.0.0.1/health || true"
-
-      - name: Summary
-        run: |
-          echo "## Ephemeral staging deployment" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **URL:** ${{ steps.ip.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Droplet ID:** \`${{ steps.droplet.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Temporary DO SSH key ID:** \`${{ steps.do_ssh_key.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Region/size:** \`${{ env.REGION }}\` / \`${{ env.SIZE }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **TTL minutes:** \`${{ env.TTL_MINUTES }}\` (cleanup job is the backstop)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Destroy when done:** \`${{ env.DESTROY_WHEN_DONE }}\`" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${{ env.DESTROY_WHEN_DONE }}" != "true" ]]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "### Manual cleanup" >> "$GITHUB_STEP_SUMMARY"
-            echo "- \`doctl compute droplet delete --force ${{ steps.droplet.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
-            if [[ -n "${{ steps.firewall.outputs.id }}" ]]; then
-              echo "- \`doctl compute firewall delete --force ${{ steps.firewall.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
-            fi
-            echo "- \`doctl compute ssh-key delete --force ${{ steps.do_ssh_key.outputs.id }}\`" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "SSH key is uploaded as workflow artifact \`ephemeral-staging-ssh-key\` (1-day retention)." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Cleanup (destroy droplet)
-        if: ${{ always() && env.DESTROY_WHEN_DONE == 'true' }}
-        continue-on-error: true
-        run: |
-          doctl compute droplet delete --force "${{ steps.droplet.outputs.id }}"
-
-      - name: Cleanup (delete firewall)
-        if: ${{ always() && env.DESTROY_WHEN_DONE == 'true' && steps.firewall.outputs.id != '' }}
-        continue-on-error: true
-        run: |
-          doctl compute firewall delete --force "${{ steps.firewall.outputs.id }}"
-
-      - name: Cleanup (delete DO SSH key)
-        if: ${{ always() && env.DESTROY_WHEN_DONE == 'true' }}
-        continue-on-error: true
-        run: |
-          doctl compute ssh-key delete --force "${{ steps.do_ssh_key.outputs.id }}"
+      - name: Comment on PR (issue_comment only)
+        if: ${{ always() && github.event_name == 'issue_comment' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = JSON.parse(fs.readFileSync('stage-summary.json', 'utf8'));
+            const ok = summary.success ? '✅' : '❌';
+            const url = summary.url || '(no url)';
+            const err = summary.error ? `\n\nError:\n\`\`\`\n${summary.error}\n\`\`\`\n` : '';
+            const checks = (summary.checks || [])
+              .map(c => `- ${c.ok ? '✅' : '❌'} ${c.name} (${c.type})${c.url ? ` - ${c.url}` : ''}`)
+              .join('\n');
+            const body = [
+              `${ok} Ephemeral staging **${summary.success ? 'passed' : 'failed'}**`,
+              ``,
+              `- Ref: \`${summary.ref}\``,
+              `- URL: ${url}`,
+              ``,
+              `Checks:`,
+              checks || '- (none)',
+              err,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body,
+            });

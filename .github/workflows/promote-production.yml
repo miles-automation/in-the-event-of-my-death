@@ -1,0 +1,102 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (branch, tag, or SHA)"
+        required: true
+        default: "main"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ieomd-prod-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SPARK_SWARM_API_URL: https://swarm.sparkswarm.com/api/v1
+      PROD_HOST: 159.65.241.127
+    steps:
+      - name: Checkout (target ref)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - name: Compute image tag
+        id: meta
+        shell: bash
+        run: |
+          short_sha="$(git rev-parse --short=7 HEAD)"
+          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/ieomd-app:${{ steps.meta.outputs.tag }}
+
+      - name: Checkout Spark Swarm runner
+        uses: actions/checkout@v4
+        with:
+          repository: richmiles/spark-swarm
+          path: spark-swarm
+          ssh-key: ${{ secrets.SPARK_SWARM_DEPLOY_KEY }}
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Write prod SSH key
+        shell: bash
+        run: |
+          install -d -m 700 "$HOME/.ssh"
+          echo "${{ secrets.PROD_SSH_KEY }}" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+      - name: Deploy (prod)
+        env:
+          SPARK_SWARM_API_KEY: ${{ secrets.SPARK_SWARM_API_KEY }}
+        run: |
+          sha="$(git rev-parse HEAD)"
+          tag="${{ steps.meta.outputs.tag }}"
+
+          python3 spark-swarm/runner/prod_deploy.py \
+            --project ieomd \
+            --ref "$sha" \
+            --host "$PROD_HOST" \
+            --ssh-key "$HOME/.ssh/id_ed25519" \
+            --compose-service ieomd \
+            --image-tag-env IEOMD_IMAGE_TAG \
+            --image-tag "$tag" \
+            --migrate-cmd "alembic upgrade head" \
+            --migrate-workdir /app \
+            --health-url "https://ieomd.com/healthz" \
+            --summary-out prod-deploy-summary.json
+
+      - name: Upload summary
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-deploy-summary
+          path: prod-deploy-summary.json
+          retention-days: 30
