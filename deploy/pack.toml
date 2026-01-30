@@ -1,0 +1,67 @@
+version = 1
+
+[project]
+key = "ieomd"
+repo = "richmiles/in-the-event-of-my-death"
+
+[staging]
+tier = "ephemeral"
+ttl_minutes = 180
+
+[staging.droplet]
+region = "nyc3"
+size = "s-1vcpu-1gb"
+image = "ubuntu-24-04-x64"
+vpc_uuid = "8116bba4-063f-415f-ad8d-12a13bb8b2bd"
+
+[[services]]
+name = "app"
+image = "ghcr.io/richmiles/ieomd-app"
+container_port = 8000
+
+[[services.routes]]
+host = "{ephem_host}"
+path_prefix = "/"
+to = "app:8000"
+
+[database]
+kind = "postgres"
+url_scheme = "postgresql+psycopg2"
+
+[database.migrations]
+type = "command"
+service = "app"
+workdir = "/app"
+run = "alembic upgrade head"
+
+[secrets]
+source = "sparkswarm"
+project = "ieomd"
+environment = "staging"
+required = ["IEOMD_DB_PASSWORD"]
+
+[[checks.pr]]
+type = "command"
+name = "make-check"
+run = "make check"
+
+[[checks.staging]]
+type = "http"
+name = "healthz"
+url = "http://{ephem_host}/healthz"
+expect_status = 200
+timeout_seconds = 10
+retries = 60
+retry_delay_seconds = 2
+
+[[checks.staging]]
+type = "http"
+name = "api-healthz-through-proxy"
+url = "http://{ephem_host}/api/v1/healthz"
+expect_status = 200
+
+[[checks.staging]]
+type = "http"
+name = "frontend-loads"
+url = "http://{ephem_host}/"
+expect_status = 200

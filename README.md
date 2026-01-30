@@ -113,6 +113,12 @@ make frontend
 
 The frontend calls the backend API at `${VITE_API_URL}/api/v1` (in production it defaults to same-origin `/api/v1`).
 
+## Health endpoints (fleet standard)
+
+- `GET /healthz` (public, DB-checked)
+- `GET /api/v1/healthz` (DB-checked; used to verify proxy routing)
+- `GET /health` (legacy)
+
 ### Development Commands
 
 ```bash

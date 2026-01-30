@@ -3,15 +3,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
+from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import engine
+from app.database import engine, get_db
 from app.logging_config import get_logger, setup_logging
 from app.middleware.logging import LoggingMiddleware
 from app.middleware.rate_limit import limiter
@@ -180,9 +181,29 @@ app.include_router(secrets.router, prefix="/api/v1", tags=["secrets"])
 app.include_router(btcpay_webhook.router, prefix="/api/v1", tags=["btcpay"])
 
 
+def check_database_connection(db: Session) -> None:
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as exc:
+        logger.warning("healthz_db_unavailable", error=str(exc))
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/healthz")
+async def healthz_check(db: Session = Depends(get_db)):
+    check_database_connection(db)
+    return {"status": "ok", "database": "ok"}
+
+
+@app.get("/api/v1/healthz")
+async def api_healthz_check(db: Session = Depends(get_db)):
+    check_database_connection(db)
+    return {"status": "ok", "database": "ok"}
 
 
 # Static file serving for production (when frontend is built into ./static)

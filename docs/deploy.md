@@ -1,49 +1,39 @@
 # Deployment
 
-IEOMD production runs on the shared `platform` droplet managed by the [platform-infra](https://github.com/richmiles/platform-infra) repository.
+IEOMD production runs on the shared `platform` droplet managed by the `platform-infra` repository.
 
-This repository is responsible for building the IEOMD application images (backend + web). It also contains an “ephemeral staging” workflow that can spin up a short-lived droplet to validate a ref before merging.
+This repository builds a single production image (`ghcr.io/richmiles/ieomd-app`) and includes:
+
+- A cheap PR gate (`make check`) on every PR
+- An expensive on-demand ephemeral staging gate (DigitalOcean droplet)
+- A production promotion workflow that pins `IEOMD_IMAGE_TAG` on the droplet and runs a deterministic deploy
 
 ## Architecture
 
 The `platform` droplet runs Docker Compose with shared infrastructure:
+
 - **Caddy** - Reverse proxy handling TLS for all services
 - **Postgres** - Shared database (IEOMD gets isolated `ieomd` user + `ieomd_db`)
-- **IEOMD web** - Frontend + internal Caddy (routes `/api/*` to backend)
-- **IEOMD backend** - FastAPI application
+- **IEOMD app** - Single container (FastAPI serves the built SPA + API)
 
 Traffic flow:
 ```
-Internet → platform Caddy (TLS) → ieomd:80 (internal Caddy) → backend:8000
+Internet → platform Caddy (TLS) → ieomd:8000
 ```
 
-## Deployment Model
+## Deployment model (production)
 
-1. **Build images**: Run the `Build` workflow in GitHub Actions (or push to main)
-   - Builds `ghcr.io/richmiles/in-the-event-of-my-death-backend:sha-xxxxx`
-   - Builds `ghcr.io/richmiles/in-the-event-of-my-death-web:sha-xxxxx`
-   - Also tags as `latest`
-
-2. **Deploy**: Update platform-infra and restart services
-   ```bash
-   ssh root@<platform-ip>
-   cd /opt/platform
-   # Update image tag in .env
-   sed -i 's/IEOMD_IMAGE_TAG=.*/IEOMD_IMAGE_TAG=sha-xxxxx/' .env
-   docker compose pull
-   docker compose up -d
-   ```
-
-3. **Verify**: Check health endpoint
-   ```bash
-   curl https://ieomd.com/health
-   ```
+1. Build and push `ghcr.io/richmiles/ieomd-app:sha-<short>` via GitHub Actions.
+2. Promote to production (pins `IEOMD_IMAGE_TAG=sha-<short>` on the droplet, pulls, migrates, restarts, health-checks).
+3. Verify:
+   - `https://ieomd.com/healthz`
+   - `https://ieomd.com/api/v1/healthz`
 
 ### Migrations (production)
 
 Production uses Postgres, so schema changes should be applied as a one-off, serialized step during deployment (run once per release), then roll the application containers.
 
-The exact commands live in platform-infra (source of truth). At a high level, the pattern is:
+The exact commands live in `platform-infra` (source of truth). At a high level, the pattern is:
 
 - Pull the new images
 - Run `alembic upgrade head` using the backend image as a one-off job
@@ -54,26 +44,28 @@ The exact commands live in platform-infra (source of truth). At a high level, th
 | Workflow | Purpose |
 |----------|---------|
 | `ci.yml` | Runs tests on PRs |
-| `build.yml` | Builds and pushes Docker images to GHCR |
-| `ephemeral-staging.yml` | Creates temporary staging droplet for testing |
-| `cleanup-ephemeral-staging.yml` | Cleans up old ephemeral droplets |
+| `build.yml` | Builds and pushes the production image to GHCR |
+| `ephemeral-staging.yml` | Runs ephemeral staging (manual or `/stage` PR comment) |
+| `promote-production.yml` | Pins tag and deploys to the prod droplet |
 | `generate-token.yml` | Admin utility for capability tokens |
 
 ## Ephemeral Staging
 
-For pre-merge testing, use the ephemeral staging workflow:
+For pre-merge testing, use ephemeral staging:
 
-1. Trigger `.github/workflows/ephemeral-staging.yml` via workflow dispatch
-2. It creates a temporary DigitalOcean droplet
-3. Deploys using `deploy/docker-compose.yml` and `deploy/remote/ieomd-deploy`, then runs smoke tests
-4. Destroys the droplet when done
+- Manual: trigger `.github/workflows/ephemeral-staging.yml` with `ref=...`
+- PR: comment `/stage` on a PR (owner-only)
+
+The workflow provisions a temporary DigitalOcean droplet and runs the fleet runner
+against `deploy/pack.toml`, then destroys the droplet when done.
 
 This avoids maintaining a dedicated staging environment.
 
 Notes:
-- Required GitHub secret: `DO_API_TOKEN` (DigitalOcean API token).
-- The workflow uses `sslip.io` so the staging URL is reachable without DNS; it prints the URL in the workflow summary.
-- For debugging, set `destroy_when_done=false`; the workflow uploads an SSH key as a short-lived artifact.
+
+- Required GitHub secrets: `DO_API_TOKEN`, `SPARK_SWARM_API_KEY`, `SPARK_SWARM_DEPLOY_KEY`
+- The workflow uses `sslip.io` so the staging URL is reachable without DNS.
+- For debugging, set `keep=true`.
 
 ## Database
 

@@ -30,14 +30,15 @@ Run migrations with:
 - `make migrate`
 - or `cd backend && poetry run alembic upgrade head`
 
-### Ephemeral staging (SQLite)
+### Ephemeral staging (Postgres)
 
-The ephemeral staging workflow provisions a droplet and deploys via `deploy/remote/ieomd-deploy`, which:
+Ephemeral staging uses Spark Swarm’s fleet runner (`spark-swarm/runner/ephemeral_stage.py`) with `deploy/pack.toml`:
 
-- Stops the backend
-- Takes a point-in-time backup of the SQLite DB file
-- Runs `alembic upgrade head`
-- Restarts services
+- Provisions a temporary DigitalOcean droplet
+- Brings up `postgres` + the app container
+- Runs `alembic upgrade head` once
+- Runs smoke checks (`/healthz`, `/api/v1/healthz`, `/`)
+- Destroys the droplet
 
 ### Migration testing
 
