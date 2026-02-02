@@ -39,3 +39,58 @@ jobs:
       - name: Run checks
         run: make check
 
+  docs_drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Docs drift (fleet contract)
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          from pathlib import Path
+
+          import tomllib
+
+          PROJECT = "ieomd"
+          IMAGE = "ghcr.io/richmiles/ieomd-app"
+
+          def must(cond: bool, msg: str) -> None:
+            if not cond:
+              raise SystemExit(msg)
+
+          pack_path = Path("deploy/pack.toml")
+          must(pack_path.exists(), "missing deploy/pack.toml")
+          data = tomllib.loads(pack_path.read_text())
+          must(data.get("project", {}).get("key") == PROJECT, "deploy pack project.key mismatch")
+
+          services = data.get("services") or []
+          must(isinstance(services, list) and services, "deploy pack missing [[services]]")
+          must(services[0].get("image") == IMAGE, "deploy pack services[0].image mismatch")
+
+          checks = (data.get("checks") or {}).get("staging") or []
+          must(any("/healthz" in str(c.get("url", "")) for c in checks), "deploy pack missing /healthz check")
+          must(any("/api/v1/healthz" in str(c.get("url", "")) for c in checks), "deploy pack missing /api/v1/healthz check")
+
+          workflow_stage = Path(".github/workflows/ephemeral-staging.yml").read_text()
+          must("deploy/pack.toml" in workflow_stage, "ephemeral-staging.yml must reference deploy/pack.toml")
+          must("Ephemeral Staging" in workflow_stage, "ephemeral-staging.yml name missing")
+
+          workflow_prod = Path(".github/workflows/promote-production.yml").read_text()
+          must("IEOMD_IMAGE_TAG" in workflow_prod, "promote-production.yml must pin IEOMD_IMAGE_TAG")
+          must("ieomd.com/healthz" in workflow_prod, "promote-production.yml must health-check /healthz")
+
+          agents = Path("AGENTS.md").read_text()
+          claude = Path("CLAUDE.md").read_text()
+          for doc_name, doc in [("AGENTS.md", agents), ("CLAUDE.md", claude)]:
+            must("/healthz" in doc, f"{doc_name} missing /healthz")
+            must("/api/v1/healthz" in doc, f"{doc_name} missing /api/v1/healthz")
+            must("deploy/pack.toml" in doc, f"{doc_name} missing deploy/pack.toml mention")
+            must("IEOMD_IMAGE_TAG" in doc, f"{doc_name} missing IEOMD_IMAGE_TAG mention")
+            must(IMAGE in doc, f"{doc_name} missing {IMAGE}")
+
+          print("docs_drift ok")
+          PY

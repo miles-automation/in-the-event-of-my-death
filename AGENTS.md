@@ -4,6 +4,32 @@ This repo is a small monorepo:
 - `frontend/`: React 19 + TypeScript + Vite
 - `backend/`: FastAPI + SQLAlchemy + Alembic (SQLite for local dev via `DATABASE_URL`)
 
+## Fleet contract (Spark Swarm standard)
+
+This repo participates in the Spark Swarm “fleet” standard for staging and production deploys.
+
+### Health (required)
+- `GET /healthz` (public, DB-checked)
+- `GET /api/v1/healthz` (DB-checked; verifies proxy routing)
+- Legacy: `GET /health` (optional)
+
+### Ephemeral staging (required)
+- Deploy definition: `deploy/pack.toml` (`database.kind="postgres"`)
+- GitHub Action: `Ephemeral Staging` (manual or `/stage` PR comment; owner-only)
+
+### Production promotion (required)
+- GitHub Action: `Promote to Production`
+- Pins: `IEOMD_IMAGE_TAG=sha-...` on the prod droplet and restarts service `ieomd`
+- Health URL: `https://ieomd.com/healthz`
+
+### Image + secrets
+- Image: `ghcr.io/richmiles/ieomd-app:<tag>`
+- Secrets source: Spark Swarm secrets export
+  - Staging: `project=ieomd environment=staging`
+  - Production: `project=ieomd environment=production` (mirrored into `/root/platform-infra/.env`)
+- Required secrets: `IEOMD_DB_PASSWORD`
+- Workflow secrets (GitHub): `DO_API_TOKEN`, `SPARK_SWARM_API_KEY`, `SPARK_SWARM_DEPLOY_KEY`, `PROD_SSH_KEY`
+
 ## Before Starting Work (REQUIRED)
 **STOP: Do not write any code until these steps are complete.**
 

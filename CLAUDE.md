@@ -59,9 +59,14 @@ The container:
 - Runs database migrations on startup
 - Accepts `DATABASE_URL` for Postgres (defaults to SQLite)
 
-Production uses two images built by GitHub Actions:
-- Backend: `backend/Dockerfile`
-- Web (Caddy serving the frontend, proxying `/api/*`): `frontend/Dockerfile`
+## Fleet contract (Spark Swarm standard)
+
+- Health: `GET /healthz` and `GET /api/v1/healthz` (DB-checked); legacy `GET /health`
+- Ephemeral staging: `deploy/pack.toml` + GitHub Action `Ephemeral Staging` (manual or `/stage`)
+- Production: GitHub Action `Promote to Production` pins `IEOMD_IMAGE_TAG=sha-...` and restarts `ieomd`
+- Image: `ghcr.io/richmiles/ieomd-app:sha-<short>` (monolithic FastAPI + built SPA)
+- Health URL: `https://ieomd.com/healthz`
+- Secrets: Spark Swarm (`project=ieomd`, `environment=staging|production`)
 
 Production deployment and shared infrastructure live in the `platform-infra` repo (source of truth).
 
