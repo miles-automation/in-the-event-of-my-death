@@ -1,4 +1,4 @@
-# Deployment
+# Deploy (Fleet Contract)
 
 IEOMD production runs on the shared `platform` droplet managed by the `platform-infra` repository.
 
@@ -7,6 +7,16 @@ This repository builds a single production image (`ghcr.io/richmiles/ieomd-app`)
 - A cheap PR gate (`make check`) on every PR
 - An expensive on-demand ephemeral staging gate (DigitalOcean droplet)
 - A production promotion workflow that pins `IEOMD_IMAGE_TAG` on the droplet and runs a deterministic deploy
+
+## Fleet summary
+
+- Spark key: `ieomd`
+- Image: `ghcr.io/richmiles/ieomd-app:<tag>`
+- Compose service: `ieomd`
+- Prod domains: `https://ieomd.com` (www redirects to apex)
+- Health URLs:
+  - `https://ieomd.com/healthz`
+  - `https://ieomd.com/api/v1/healthz`
 
 ## Architecture
 
