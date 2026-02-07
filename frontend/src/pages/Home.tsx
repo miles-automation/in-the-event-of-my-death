@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import {
   generateAesKey,
   exportKey,
@@ -18,6 +18,7 @@ import {
   validateCapabilityToken,
   type CapabilityTokenInfo,
 } from '../services/api'
+import { addEntry } from '../services/vault'
 import { solveChallenge } from '../services/pow'
 import { encodeSecretPayload, type AttachmentRef } from '../services/secretPayload'
 import { generateShareableLinks } from '../utils/urlFragments'
@@ -72,6 +73,9 @@ export default function Home() {
   const [premiumToken, setPremiumToken] = useState<string | null>(null)
   const [premiumInfo, setPremiumInfo] = useState<CapabilityTokenInfo | null>(null)
   const [tokenCopied, setTokenCopied] = useState(false)
+
+  // Vault tracking state
+  const [vaultSaved, setVaultSaved] = useState(false)
 
   // Tick state to trigger re-renders for live time updates
   const [, setTick] = useState(0)
@@ -313,6 +317,22 @@ export default function Home() {
       // Use server-provided times (accurate, no clock skew)
       setCreatedUnlockAt(new Date(response.unlock_at))
       setCreatedExpiresAt(new Date(response.expires_at))
+
+      // Auto-track in local vault (graceful degradation if IndexedDB unavailable)
+      try {
+        await addEntry({
+          secretId: response.secret_id,
+          editToken,
+          createdAt: response.created_at,
+          unlockAt: response.unlock_at,
+          expiresAt: response.expires_at,
+          status: 'pending',
+        })
+        setVaultSaved(true)
+      } catch {
+        // IndexedDB unavailable — silent failure
+      }
+
       setStep('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
@@ -381,9 +401,10 @@ export default function Home() {
     setCreatedExpiresAt(null)
     setLinks(null)
     setError(null)
-    // Clear premium token after use
+    // Clear premium token and vault state after use
     setPremiumToken(null)
     setPremiumInfo(null)
+    setVaultSaved(false)
     navigate('/', { replace: true })
   }
 
@@ -561,6 +582,12 @@ export default function Home() {
             <strong>Important:</strong> The encryption key is in the URL fragment. If you lose these
             links, your secret cannot be recovered.
           </div>
+
+          {vaultSaved && (
+            <p className="helper-text" style={{ textAlign: 'center', marginTop: '0.5rem' }}>
+              Saved to <Link to="/my-secrets">My Secrets</Link>
+            </p>
+          )}
 
           <button onClick={resetForm} className="button secondary">
             Create Another Secret
