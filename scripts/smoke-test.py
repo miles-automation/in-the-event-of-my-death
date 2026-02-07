@@ -9,14 +9,17 @@ This script is intentionally a deploy guardrail:
 
 Flow (default):
 1. Health check
-2. Web serving + asset load (optional via --skip-web)
-3. Secret creation (PoW + POST /secrets)
-4. Edit-token status check
-5. Edit flow (PUT /secrets/edit + re-check status)
-6. Decrypt-token status check
-7. Public status-by-id check
-8. Retrieve pending check (optional; only when unlock is soon)
-9. Unlock + retrieve one-time delete (optional; only when unlock is soon)
+2. Feedback endpoint (optional via --test-feedback; off by default)
+3. Web serving + asset load (optional via --skip-web)
+4. Attachment upload (if cryptography installed + object storage enabled)
+5. Secret creation (PoW + POST /secrets, with attachment if uploaded)
+6. Edit-token status check
+7. Edit flow (PUT /secrets/edit + re-check status)
+8. Decrypt-token status check
+9. Public status-by-id check
+10. Retrieve pending check (optional; only when unlock is soon)
+11. Unlock + retrieve + attachment download + one-time delete (optional)
+12. Capability token flow (optional via --capability-token-key)
 
 Usage:
     ./scripts/smoke-test.py https://staging.example.com
@@ -499,6 +502,9 @@ class SmokeContext:
     attachment_id: str | None = None
     attachment_key: bytes | None = None
 
+    # Capability token fields
+    capability_token_api_key: str | None = None
+
     def require_edit_token(self) -> str:
         if not self.edit_token:
             raise RuntimeError("Missing edit_token (step ordering bug)")
@@ -821,6 +827,138 @@ def step_optional_unlock_mapping(ctx: SmokeContext) -> None:
     log("Deadline reached without unlock; skipping status mapping verification")
 
 
+def step_capability_token_flow(ctx: SmokeContext) -> None:
+    """Mint a capability token, validate it, create a secret without PoW, verify consumed."""
+    api_key = ctx.capability_token_api_key
+    assert api_key  # skip check ensures this
+
+    # Step 1: Mint token
+    log("Minting capability token (tier=basic)")
+    try:
+        token_resp = ctx.client.api_json(
+            "POST",
+            "/capability-tokens",
+            headers={"X-API-Key": api_key},
+            data={"tier": "basic"},
+        )
+    except ApiError as e:
+        if e.status_code == 503:
+            log("Capability tokens not configured on this environment; skipping")
+            return
+        raise
+
+    token = token_resp.get("token")
+    if not token or len(token) != 64:
+        raise RuntimeError(f"Expected 64-char token, got: {token!r}")
+    tier = token_resp.get("tier")
+    if tier != "basic":
+        raise RuntimeError(f"Expected tier 'basic', got {tier!r}")
+    log(f"Token minted: tier={tier}, prefix={token[:8]}...")
+
+    # Step 2: Validate token (should be valid, not consumed)
+    log("Validating token (pre-use)")
+    validate_resp = ctx.client.api_json(
+        "GET",
+        "/capability-tokens/validate",
+        headers={"X-Capability-Token": token},
+    )
+    if not validate_resp.get("valid"):
+        raise RuntimeError(f"Token should be valid before use: {validate_resp!r}")
+    if validate_resp.get("consumed"):
+        raise RuntimeError(f"Token should not be consumed yet: {validate_resp!r}")
+
+    # Step 3: Create secret using token (no PoW)
+    log("Creating secret with capability token (no PoW)")
+    ciphertext_b64, iv_b64, auth_tag_b64, _ = generate_test_secret()
+    now = datetime.now(timezone.utc)
+    unlock_at = (now + timedelta(seconds=DEFAULT_UNLOCK_SECONDS)).replace(microsecond=0)
+    expires_at = (unlock_at + timedelta(minutes=EXPIRY_GAP_MINUTES)).replace(microsecond=0)
+
+    edit_token = secrets.token_hex(32)
+    decrypt_token = secrets.token_hex(32)
+
+    create_payload: dict[str, Any] = {
+        "ciphertext": ciphertext_b64,
+        "iv": iv_b64,
+        "auth_tag": auth_tag_b64,
+        "unlock_at": format_utc_datetime(unlock_at),
+        "expires_at": format_utc_datetime(expires_at),
+        "edit_token": edit_token,
+        "decrypt_token": decrypt_token,
+    }
+
+    try:
+        secret = ctx.client.api_json(
+            "POST",
+            "/secrets",
+            headers={"X-Capability-Token": token},
+            data=create_payload,
+        )
+    except ApiError as e:
+        adjusted = compute_unlock_at_for_environment(e)
+        if not adjusted:
+            raise
+        unlock_at = adjusted.replace(microsecond=0)
+        expires_at = (unlock_at + timedelta(minutes=EXPIRY_GAP_MINUTES)).replace(microsecond=0)
+        create_payload["unlock_at"] = format_utc_datetime(unlock_at)
+        create_payload["expires_at"] = format_utc_datetime(expires_at)
+        log(f"Create rejected; retrying with unlock_at={create_payload['unlock_at']}")
+        secret = ctx.client.api_json(
+            "POST",
+            "/secrets",
+            headers={"X-Capability-Token": token},
+            data=create_payload,
+        )
+
+    if not secret.get("secret_id"):
+        raise RuntimeError(f"Secret creation with token failed: {secret!r}")
+    log(f"Secret created via token: id={secret['secret_id']}")
+
+    # Step 4: Verify token is now consumed
+    log("Validating token (post-use, should be consumed)")
+    validate_after = ctx.client.api_json(
+        "GET",
+        "/capability-tokens/validate",
+        headers={"X-Capability-Token": token},
+    )
+    if validate_after.get("valid"):
+        raise RuntimeError(f"Token should be invalid after consumption: {validate_after!r}")
+    if not validate_after.get("consumed"):
+        raise RuntimeError(f"Token should show consumed=true: {validate_after!r}")
+
+    # Step 5: Verify invalid token is rejected on secret creation
+    log("Verifying invalid token rejected")
+    bad_token = "0" * 64
+    status, _, body = ctx.client.request(
+        "POST",
+        f"{ctx.client.base_url}/api/v1/secrets",
+        headers={
+            "Content-Type": "application/json",
+            "X-Capability-Token": bad_token,
+        },
+        body=json.dumps(create_payload).encode(),
+    )
+    if status not in (401, 400):
+        raise RuntimeError(f"Expected 401/400 for invalid token, got {status}")
+
+    log("Capability token flow OK")
+
+
+def step_feedback(ctx: SmokeContext) -> None:
+    """Send a minimal feedback payload and verify 201 + response shape."""
+    log("Submitting smoke-test feedback")
+    result = ctx.client.api_json(
+        "POST",
+        "/feedback",
+        data={"message": "[smoke-test] automated probe — safe to ignore"},
+    )
+    if not result.get("success"):
+        raise RuntimeError(f"Feedback response missing success=true: {result!r}")
+    if "message" not in result:
+        raise RuntimeError(f"Feedback response missing 'message' field: {result!r}")
+    log("Feedback endpoint OK")
+
+
 def step_retrieve_pending(ctx: SmokeContext) -> None:
     log("Verifying retrieve endpoint returns pending pre-unlock")
     current = ctx.client.api_json(
@@ -901,6 +1039,16 @@ def step_retrieve_available_once(ctx: SmokeContext) -> None:
             raise RuntimeError("Attachment missing storage_key")
         log(f"Attachment verified: presigned URL present for {att.get('storage_key', '')[:30]}...")
 
+        # Fetch the presigned URL to verify the download actually works
+        presigned_url = att["presigned_url"]
+        log("Fetching attachment via presigned URL")
+        dl_status, _, dl_body = ctx.client.get(presigned_url, timeout_seconds=20.0)
+        if dl_status != 200:
+            raise RuntimeError(f"Attachment download failed: status={dl_status}")
+        if not dl_body:
+            raise RuntimeError("Attachment download returned empty body")
+        log(f"Attachment downloaded: {len(dl_body)} bytes")
+
     after = ctx.client.api_json(
         "GET",
         "/secrets/status",
@@ -936,6 +1084,16 @@ def skip_retrieve_lifecycle(ctx: SmokeContext) -> str | None:
     return skip_optional_unlock_mapping(ctx)
 
 
+def skip_capability_token_disabled(ctx: SmokeContext) -> str | None:
+    if not ctx.capability_token_api_key:
+        return "no --capability-token-key provided"
+    return None
+
+
+def skip_feedback_disabled(_: SmokeContext) -> str | None:
+    return "disabled (use --test-feedback to enable)"
+
+
 def skip_web_disabled(_: SmokeContext) -> str | None:
     return "disabled via --skip-web"
 
@@ -966,6 +1124,16 @@ def main() -> int:
         help=f"Retries for transient failures (default: {DEFAULT_RETRIES})",
     )
     parser.add_argument(
+        "--test-feedback",
+        action="store_true",
+        help="Enable feedback endpoint check (off by default to avoid notification spam)",
+    )
+    parser.add_argument(
+        "--capability-token-key",
+        default=None,
+        help="Internal API key for capability-token smoke test (skipped if not provided)",
+    )
+    parser.add_argument(
         "--max-health-attempts",
         type=int,
         default=30,
@@ -976,7 +1144,11 @@ def main() -> int:
     try:
         base_url = args.base_url.rstrip("/")
         client = HttpClient(base_url=base_url, timeout_seconds=args.timeout, retries=args.retries)
-        ctx = SmokeContext(client=client, max_health_attempts=args.max_health_attempts)
+        ctx = SmokeContext(
+            client=client,
+            max_health_attempts=args.max_health_attempts,
+            capability_token_api_key=args.capability_token_key,
+        )
 
         steps: list[Step] = [Step("health", step_health)]
         if args.health_only:
@@ -984,6 +1156,11 @@ def main() -> int:
         else:
             steps.extend(
                 [
+                    Step(
+                        "feedback",
+                        step_feedback,
+                        skip_reason=None if args.test_feedback else skip_feedback_disabled,
+                    ),
                     Step(
                         "web",
                         step_web,
@@ -1009,6 +1186,11 @@ def main() -> int:
                         "retrieve available + delete",
                         step_retrieve_available_once,
                         skip_reason=skip_retrieve_lifecycle,
+                    ),
+                    Step(
+                        "capability token flow",
+                        step_capability_token_flow,
+                        skip_reason=skip_capability_token_disabled,
                     ),
                 ]
             )
