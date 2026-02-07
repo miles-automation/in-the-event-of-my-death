@@ -62,6 +62,8 @@ export default function MySecrets() {
   const [state, setState] = useState<State>({ type: 'loading' })
   const [refreshing, setRefreshing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [editingLabel, setEditingLabel] = useState<string | null>(null)
+  const [labelDraft, setLabelDraft] = useState('')
 
   useEffect(() => {
     document.title = 'My Secrets | In The Event Of My Death'
@@ -154,6 +156,29 @@ export default function MySecrets() {
     }
   }
 
+  const startEditingLabel = (entry: VaultEntry) => {
+    setEditingLabel(entry.secretId)
+    setLabelDraft(entry.label || '')
+  }
+
+  const saveLabel = async (secretId: string) => {
+    const trimmed = labelDraft.trim()
+    try {
+      await updateEntry(secretId, { label: trimmed || undefined })
+      if (state.type === 'loaded') {
+        setState({
+          type: 'loaded',
+          entries: state.entries.map((e) =>
+            e.secretId === secretId ? { ...e, label: trimmed || undefined } : e,
+          ),
+        })
+      }
+    } catch {
+      // IndexedDB write failed — ignore
+    }
+    setEditingLabel(null)
+  }
+
   if (state.type === 'loading') {
     return (
       <div className="my-secrets">
@@ -211,7 +236,30 @@ export default function MySecrets() {
           return (
             <div key={entry.secretId} className="secret-card">
               <div className="secret-card-header">
-                <span className="secret-label">{entry.label || 'Untitled'}</span>
+                {editingLabel === entry.secretId ? (
+                  <input
+                    className="secret-label-input"
+                    type="text"
+                    value={labelDraft}
+                    onChange={(e) => setLabelDraft(e.target.value)}
+                    onBlur={() => saveLabel(entry.secretId)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveLabel(entry.secretId)
+                      if (e.key === 'Escape') setEditingLabel(null)
+                    }}
+                    placeholder="Add a label..."
+                    autoFocus
+                    maxLength={100}
+                  />
+                ) : (
+                  <span
+                    className={`secret-label ${!entry.label ? 'secret-label-placeholder' : ''}`}
+                    onClick={() => startEditingLabel(entry)}
+                    title="Click to add a label"
+                  >
+                    {entry.label || 'Add a label...'}
+                  </span>
+                )}
                 <span className={statusClass(entry.status)}>{statusLabel(entry.status)}</span>
               </div>
 

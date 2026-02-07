@@ -1595,6 +1595,31 @@ input[type='email']:focus {
   font-weight: 600;
   color: var(--text-primary);
   font-size: 1rem;
+  cursor: pointer;
+}
+
+.secret-label-placeholder {
+  color: var(--text-subtle);
+  font-weight: 400;
+  font-style: italic;
+}
+
+.secret-label-input {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  padding: 0.15rem 0.4rem;
+  outline: none;
+  min-width: 0;
+  flex: 1;
+}
+
+.secret-label-input:focus {
+  border-color: var(--accent-primary);
 }
 
 .status-badge {
