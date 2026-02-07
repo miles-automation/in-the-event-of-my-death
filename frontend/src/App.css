@@ -1538,6 +1538,170 @@ input[type='email']:focus {
   line-height: 1.7;
 }
 
+/* My Secrets dashboard */
+.my-secrets {
+  text-align: center;
+}
+
+.my-secrets h1 {
+  margin-bottom: 1.5rem;
+}
+
+.empty-state {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 3rem 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.empty-state p {
+  margin: 0 0 1rem;
+  color: var(--text-secondary);
+}
+
+.empty-state .button {
+  margin-top: 0.5rem;
+}
+
+.refresh-indicator {
+  font-size: 0.875rem;
+  color: var(--text-subtle);
+  margin-bottom: 1rem;
+}
+
+.secrets-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: left;
+}
+
+.secret-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+}
+
+.secret-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.secret-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.status-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.status-badge.pending {
+  background: rgba(163, 163, 163, 0.15);
+  color: var(--text-subtle);
+}
+
+.status-badge.unlocked {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--success);
+}
+
+.status-badge.retrieved {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+}
+
+.status-badge.expired {
+  background: rgba(163, 163, 163, 0.1);
+  color: var(--text-subtle);
+  opacity: 0.7;
+}
+
+.secret-recipient {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem;
+}
+
+.secret-dates {
+  margin-bottom: 0.75rem;
+}
+
+.secret-date {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0.15rem 0;
+}
+
+.date-label {
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+
+.secret-card-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.confirm-delete {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.button.danger {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+.button.danger:hover {
+  opacity: 0.9;
+}
+
+.button.text {
+  background: transparent;
+  border: none;
+  color: var(--text-subtle);
+  padding: 0.3rem 0.6rem;
+}
+
+.button.text:hover {
+  color: var(--text-primary);
+}
+
+.button.small {
+  font-size: 0.8125rem;
+  padding: 0.35rem 0.75rem;
+  min-height: auto;
+  border-radius: 4px;
+}
+
+.button.secondary.small {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.button.secondary.small:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
 /* Responsive - Medium screens */
 @media (max-width: 768px) {
   main {

@@ -9,6 +9,7 @@ import PaymentSuccess from './pages/PaymentSuccess'
 import WhyBitcoin from './pages/WhyBitcoin'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
+import MySecrets from './pages/MySecrets'
 import './App.css'
 
 function App() {
@@ -30,6 +31,7 @@ function App() {
             <Route path="/why-bitcoin" element={<WhyBitcoin />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/my-secrets" element={<MySecrets />} />
           </Routes>
         </main>
 
@@ -41,6 +43,8 @@ function App() {
               <Link to="/pricing">Pricing</Link>
               <span className="footer-separator">•</span>
               <Link to="/feedback">Feedback</Link>
+              <span className="footer-separator">•</span>
+              <Link to="/my-secrets">My Secrets</Link>
               <span className="footer-separator">•</span>
               <Link to="/privacy">Privacy</Link>
               <span className="footer-separator">•</span>
