@@ -1686,7 +1686,20 @@ input[type='email']:focus {
 
 .button.small {
   font-size: 0.8125rem;
-  padding: 0.3rem 0.75rem;
+  padding: 0.35rem 0.75rem;
+  min-height: auto;
+  border-radius: 4px;
+}
+
+.button.secondary.small {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.button.secondary.small:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 /* Responsive - Medium screens */
