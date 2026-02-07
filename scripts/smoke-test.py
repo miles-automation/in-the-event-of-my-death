@@ -9,14 +9,15 @@ This script is intentionally a deploy guardrail:
 
 Flow (default):
 1. Health check
-2. Web serving + asset load (optional via --skip-web)
-3. Secret creation (PoW + POST /secrets)
-4. Edit-token status check
-5. Edit flow (PUT /secrets/edit + re-check status)
-6. Decrypt-token status check
-7. Public status-by-id check
-8. Retrieve pending check (optional; only when unlock is soon)
-9. Unlock + retrieve one-time delete (optional; only when unlock is soon)
+2. Feedback endpoint (optional via --test-feedback; off by default)
+3. Web serving + asset load (optional via --skip-web)
+4. Secret creation (PoW + POST /secrets)
+5. Edit-token status check
+6. Edit flow (PUT /secrets/edit + re-check status)
+7. Decrypt-token status check
+8. Public status-by-id check
+9. Retrieve pending check (optional; only when unlock is soon)
+10. Unlock + retrieve one-time delete (optional; only when unlock is soon)
 
 Usage:
     ./scripts/smoke-test.py https://staging.example.com
@@ -821,6 +822,21 @@ def step_optional_unlock_mapping(ctx: SmokeContext) -> None:
     log("Deadline reached without unlock; skipping status mapping verification")
 
 
+def step_feedback(ctx: SmokeContext) -> None:
+    """Send a minimal feedback payload and verify 201 + response shape."""
+    log("Submitting smoke-test feedback")
+    result = ctx.client.api_json(
+        "POST",
+        "/feedback",
+        data={"message": "[smoke-test] automated probe — safe to ignore"},
+    )
+    if not result.get("success"):
+        raise RuntimeError(f"Feedback response missing success=true: {result!r}")
+    if "message" not in result:
+        raise RuntimeError(f"Feedback response missing 'message' field: {result!r}")
+    log("Feedback endpoint OK")
+
+
 def step_retrieve_pending(ctx: SmokeContext) -> None:
     log("Verifying retrieve endpoint returns pending pre-unlock")
     current = ctx.client.api_json(
@@ -936,6 +952,10 @@ def skip_retrieve_lifecycle(ctx: SmokeContext) -> str | None:
     return skip_optional_unlock_mapping(ctx)
 
 
+def skip_feedback_disabled(_: SmokeContext) -> str | None:
+    return "disabled (use --test-feedback to enable)"
+
+
 def skip_web_disabled(_: SmokeContext) -> str | None:
     return "disabled via --skip-web"
 
@@ -966,6 +986,11 @@ def main() -> int:
         help=f"Retries for transient failures (default: {DEFAULT_RETRIES})",
     )
     parser.add_argument(
+        "--test-feedback",
+        action="store_true",
+        help="Enable feedback endpoint check (off by default to avoid notification spam)",
+    )
+    parser.add_argument(
         "--max-health-attempts",
         type=int,
         default=30,
@@ -984,6 +1009,11 @@ def main() -> int:
         else:
             steps.extend(
                 [
+                    Step(
+                        "feedback",
+                        step_feedback,
+                        skip_reason=None if args.test_feedback else skip_feedback_disabled,
+                    ),
                     Step(
                         "web",
                         step_web,
