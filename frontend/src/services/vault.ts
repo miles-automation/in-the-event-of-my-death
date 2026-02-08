@@ -102,46 +102,73 @@ export async function initVault(): Promise<{ vaultKey: string }> {
   })
 }
 
+/**
+ * Returns whether a vault database exists.
+ *
+ * On IndexedDB errors (private browsing, blocked storage, quota exceeded)
+ * this returns `false` so callers can treat the vault as absent and let
+ * `initVault()` handle recovery or surface a proper error later.
+ */
 export async function hasVault(): Promise<boolean> {
-  if (typeof indexedDB.databases === 'function') {
-    const databases = await indexedDB.databases()
-    return databases.some((db) => db.name === DB_NAME)
-  }
+  try {
+    if (typeof indexedDB.databases === 'function') {
+      const databases = await indexedDB.databases()
+      return databases.some((db) => db.name === DB_NAME)
+    }
 
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME)
-    let shouldResolveFalse = false
+    return await new Promise<boolean>((resolve) => {
+      const request = indexedDB.open(DB_NAME)
+      let shouldResolveFalse = false
 
-    request.onupgradeneeded = (event) => {
-      const oldVersion = event.oldVersion
-      if (oldVersion === 0) {
-        shouldResolveFalse = true
-        request.transaction?.abort()
+      request.onupgradeneeded = (event) => {
+        const oldVersion = event.oldVersion
+        if (oldVersion === 0) {
+          shouldResolveFalse = true
+          request.transaction?.abort()
+        }
       }
-    }
 
-    request.onsuccess = () => {
-      const db = request.result
-      db.close()
-      resolve(true)
-    }
+      request.onsuccess = () => {
+        const db = request.result
+        db.close()
+        resolve(true)
+      }
 
-    request.onerror = () => {
-      if (shouldResolveFalse && request.error?.name === 'AbortError') {
+      request.onerror = () => {
+        if (shouldResolveFalse && request.error?.name === 'AbortError') {
+          resolve(false)
+          return
+        }
         resolve(false)
-        return
       }
-      reject(request.error ?? new Error('Failed to check vault existence'))
-    }
-  })
+    })
+  } catch {
+    return false
+  }
 }
 
+/**
+ * Adds a new entry to the vault. Rejects with a `ConstraintError` if an entry
+ * with the same `secretId` already exists — use `updateEntry()` to modify
+ * an existing entry.
+ */
 export async function addEntry(entry: VaultEntry): Promise<void> {
   return withDb(async (db) => {
     const tx = db.transaction(STORE_ENTRIES, 'readwrite')
     const store = tx.objectStore(STORE_ENTRIES)
     await requestToPromise(store.add(entry))
     await transactionDone(tx)
+  })
+}
+
+/** Returns a single vault entry by `secretId`, or `null` if not found. */
+export async function getEntry(secretId: string): Promise<VaultEntry | null> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_ENTRIES, 'readonly')
+    const store = tx.objectStore(STORE_ENTRIES)
+    const entry = await requestToPromise(store.get(secretId) as IDBRequest<VaultEntry | undefined>)
+    await transactionDone(tx)
+    return entry ?? null
   })
 }
 

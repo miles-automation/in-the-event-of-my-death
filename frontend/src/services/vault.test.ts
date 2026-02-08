@@ -2,7 +2,15 @@ import { describe, it, expect, beforeEach } from 'vitest'
 
 import type { VaultEntry } from '../types'
 
-import { addEntry, deleteEntry, getEntries, hasVault, initVault, updateEntry } from './vault'
+import {
+  addEntry,
+  deleteEntry,
+  getEntries,
+  getEntry,
+  hasVault,
+  initVault,
+  updateEntry,
+} from './vault'
 
 function deleteVaultDb(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -54,6 +62,44 @@ describe('vault service', () => {
     expect(entries[0]).toEqual(entry)
   })
 
+  it('getEntry returns a single entry by secretId', async () => {
+    await initVault()
+
+    const entry: VaultEntry = {
+      secretId: 'secret_get',
+      editToken: 'edit_get',
+      createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+      unlockAt: new Date('2026-01-02T00:00:00Z').toISOString(),
+      expiresAt: new Date('2026-01-03T00:00:00Z').toISOString(),
+      label: 'Get test',
+    }
+
+    await addEntry(entry)
+    const result = await getEntry('secret_get')
+    expect(result).toEqual(entry)
+  })
+
+  it('getEntry returns null for a missing secretId', async () => {
+    await initVault()
+    const result = await getEntry('nonexistent')
+    expect(result).toBeNull()
+  })
+
+  it('addEntry rejects on duplicate secretId', async () => {
+    await initVault()
+
+    const entry: VaultEntry = {
+      secretId: 'secret_dup',
+      editToken: 'edit_dup',
+      createdAt: new Date('2026-01-01T00:00:00Z').toISOString(),
+      unlockAt: new Date('2026-01-02T00:00:00Z').toISOString(),
+      expiresAt: new Date('2026-01-03T00:00:00Z').toISOString(),
+    }
+
+    await addEntry(entry)
+    await expect(addEntry({ ...entry, editToken: 'different' })).rejects.toThrow()
+  })
+
   it('updates an entry by secretId', async () => {
     await initVault()
 
@@ -96,5 +142,15 @@ describe('vault service', () => {
 
     await deleteEntry('secret_3')
     await expect(getEntries()).resolves.toEqual([])
+  })
+
+  it('hasVault returns false when indexedDB.databases() throws', async () => {
+    const original = indexedDB.databases
+    indexedDB.databases = () => Promise.reject(new Error('blocked'))
+    try {
+      await expect(hasVault()).resolves.toBe(false)
+    } finally {
+      indexedDB.databases = original
+    }
   })
 })
