@@ -43,7 +43,7 @@ export default function ViewSecret() {
   )
   const [countdown, setCountdown] = useState<string>('')
   const [copied, setCopied] = useState(false)
-  const copyTimeout = useRef<ReturnType<typeof setTimeout>>()
+  const copyTimeout = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const checkStatus = useCallback(async (decryptToken: string) => {
     try {
