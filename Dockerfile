@@ -9,6 +9,8 @@ RUN npm ci
 
 # Build frontend
 COPY frontend/ ./
+ARG VITE_BTCPAY_POS_URL
+ENV VITE_BTCPAY_POS_URL=${VITE_BTCPAY_POS_URL}
 RUN npm run build
 
 
