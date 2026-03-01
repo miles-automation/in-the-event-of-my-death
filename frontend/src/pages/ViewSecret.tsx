@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { extractFromFragment } from '../utils/urlFragments'
 import { getSecretStatus, retrieveSecret } from '../services/api'
 import { decryptBytes, decryptFileMetadata, decryptFileBlob } from '../services/crypto'
@@ -42,6 +42,8 @@ export default function ViewSecret() {
     params.token ? { type: 'loading' } : { type: 'missing_params' },
   )
   const [countdown, setCountdown] = useState<string>('')
+  const [copied, setCopied] = useState(false)
+  const copyTimeout = useRef<ReturnType<typeof setTimeout>>()
 
   const checkStatus = useCallback(async (decryptToken: string) => {
     try {
@@ -231,6 +233,28 @@ export default function ViewSecret() {
     }
   }
 
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      clearTimeout(copyTimeout.current)
+      copyTimeout.current = setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      setCopied(true)
+      clearTimeout(copyTimeout.current)
+      copyTimeout.current = setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
   if (state.type === 'loading') {
     return (
       <div className="view-secret">
@@ -332,7 +356,47 @@ export default function ViewSecret() {
       <div className="view-secret">
         <h1>Your Secret</h1>
         <div className="secret-content">
-          {state.text && <pre>{state.text}</pre>}
+          {state.text && (
+            <>
+              <button
+                className="copy-btn"
+                onClick={() => handleCopy(state.text)}
+                title={copied ? 'Copied!' : 'Copy to clipboard'}
+                aria-label={copied ? 'Copied to clipboard' : 'Copy secret text to clipboard'}
+              >
+                {copied ? (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path
+                      d="M3 8.5L6.5 12L13 4"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <rect
+                      x="5.5"
+                      y="5.5"
+                      width="8"
+                      height="8"
+                      rx="1.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
+                    <path
+                      d="M10.5 5.5V3.5C10.5 2.67 9.83 2 9 2H3.5C2.67 2 2 2.67 2 3.5V9C2 9.83 2.67 10.5 3.5 10.5H5.5"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                )}
+              </button>
+              <pre>{state.text}</pre>
+            </>
+          )}
           {state.attachments.length > 0 && (
             <div className="attachments">
               <h2>Attachments</h2>

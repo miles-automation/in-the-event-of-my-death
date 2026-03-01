@@ -1127,6 +1127,38 @@ input[type='email']:focus {
   margin: 1.5rem 0;
   text-align: left;
   border: 1px solid var(--border-subtle);
+  position: relative;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+  opacity: 0.5;
+}
+
+.copy-btn:hover {
+  opacity: 1;
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.copy-btn:active {
+  opacity: 1;
 }
 
 .secret-content pre {
