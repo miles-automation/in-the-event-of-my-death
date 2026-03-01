@@ -7,6 +7,14 @@ on:
         description: "Git ref to build"
         required: true
         default: "main"
+      runner_target:
+        description: "Runner target for manual runs"
+        required: true
+        type: choice
+        default: "self-hosted-canary"
+        options:
+          - self-hosted-canary
+          - ubuntu-latest
 
 permissions:
   contents: read
@@ -18,7 +26,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_target == 'ubuntu-latest' && '"ubuntu-latest"' || '["self-hosted","linux","x64","do-1gb-canary"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +53,7 @@ jobs:
       - run: make check
 
   build_image:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(inputs.runner_target == 'ubuntu-latest' && '"ubuntu-latest"' || '["self-hosted","linux","x64","do-1gb-canary"]') }}
     needs: check
     steps:
       - uses: actions/checkout@v4
