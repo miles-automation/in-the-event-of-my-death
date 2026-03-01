@@ -11,7 +11,7 @@ on:
         description: "Runner target for manual runs"
         required: true
         type: choice
-        default: "self-hosted-canary"
+        default: "ubuntu-latest"
         options:
           - self-hosted-canary
           - ubuntu-latest
@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ${{ fromJSON(inputs.runner_target == 'ubuntu-latest' && '"ubuntu-latest"' || '["self-hosted","linux","x64","do-1gb-canary"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_target == 'self-hosted-canary' && '["self-hosted","linux","x64","do-1gb-canary"]' || '"ubuntu-latest"') }}
     env:
       SPARK_SWARM_API_URL: https://swarm.sparkswarm.com/api/v1
       PROD_HOST: 159.65.241.127

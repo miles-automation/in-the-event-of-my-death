@@ -11,7 +11,7 @@ on:
         description: "Runner target for manual runs"
         required: true
         type: choice
-        default: "self-hosted-canary"
+        default: "ubuntu-latest"
         options:
           - self-hosted-canary
           - ubuntu-latest
@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ${{ fromJSON(inputs.runner_target == 'ubuntu-latest' && '"ubuntu-latest"' || '["self-hosted","linux","x64","do-1gb-canary"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_target == 'self-hosted-canary' && '["self-hosted","linux","x64","do-1gb-canary"]' || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,7 +53,7 @@ jobs:
       - run: make check
 
   build_image:
-    runs-on: ${{ fromJSON(inputs.runner_target == 'ubuntu-latest' && '"ubuntu-latest"' || '["self-hosted","linux","x64","do-1gb-canary"]') }}
+    runs-on: ${{ fromJSON(inputs.runner_target == 'self-hosted-canary' && '["self-hosted","linux","x64","do-1gb-canary"]' || '"ubuntu-latest"') }}
     needs: check
     steps:
       - uses: actions/checkout@v4
