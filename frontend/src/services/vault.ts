@@ -243,6 +243,13 @@ export async function replaceAllEntries(entries: VaultEntry[]): Promise<void> {
 }
 
 /**
+ * Returns the current vault key without creating one, or null if no vault exists.
+ */
+export async function getVaultKeyIfExists(): Promise<string | null> {
+  return withDb(async (db) => getMetaValue(db, VAULT_KEY_META_KEY))
+}
+
+/**
  * Import a vaultKey from an external source (pairing or recovery).
  *
  * Overwrites any existing vaultKey. Callers should sync after import.
@@ -250,5 +257,17 @@ export async function replaceAllEntries(entries: VaultEntry[]): Promise<void> {
 export async function importVaultKey(vaultKeyBase64: string): Promise<void> {
   return withDb(async (db) => {
     await setMetaValue(db, VAULT_KEY_META_KEY, vaultKeyBase64)
+  })
+}
+
+/**
+ * Delete a meta value by key.
+ */
+export async function deleteMeta(key: string): Promise<void> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_META, 'readwrite')
+    const store = tx.objectStore(STORE_META)
+    await requestToPromise(store.delete(key))
+    await transactionDone(tx)
   })
 }

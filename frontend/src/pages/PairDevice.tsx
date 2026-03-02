@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { unwrapVaultKeyWithPassword } from '../services/vault-crypto'
-import { importVaultKey } from '../services/vault'
-import { syncVault } from '../services/vault-sync'
+import { getVaultKeyIfExists, getEntries } from '../services/vault'
+import { importAndSync } from '../services/vault-sync'
+import type { VaultEntry } from '../types'
 
 type State =
   | { type: 'input' }
   | { type: 'pairing' }
+  | { type: 'merge_prompt'; vaultKey: string; existingEntryCount: number }
   | { type: 'success' }
   | { type: 'error'; message: string }
 
@@ -31,6 +33,21 @@ export default function PairDevice() {
 
   const hasValidFragment = fragment.encrypted && fragment.salt
 
+  const completePairing = async (vaultKeyBase64: string, entriesToMerge: VaultEntry[]) => {
+    setState({ type: 'pairing' })
+    try {
+      const result = await importAndSync(vaultKeyBase64, entriesToMerge)
+      if (result.status === 'error') {
+        setState({ type: 'error', message: result.error || 'Sync failed after pairing' })
+        return
+      }
+      setState({ type: 'success' })
+      setTimeout(() => navigate('/my-secrets'), 1500)
+    } catch {
+      setState({ type: 'error', message: 'Failed to sync after pairing.' })
+    }
+  }
+
   const handlePair = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!fragment.encrypted || !fragment.salt || !password) return
@@ -45,25 +62,33 @@ export default function PairDevice() {
         password,
       )
 
-      // Import into local vault
-      await importVaultKey(vaultKeyBase64)
+      // Check if this device has a different vault with entries
+      const currentKey = await getVaultKeyIfExists()
+      const entries = await getEntries()
 
-      // Sync from server to pull all entries
-      const result = await syncVault(vaultKeyBase64)
-
-      if (result.status === 'error') {
-        setState({ type: 'error', message: result.error || 'Sync failed after pairing' })
+      if (currentKey && currentKey !== vaultKeyBase64 && entries.length > 0) {
+        setState({
+          type: 'merge_prompt',
+          vaultKey: vaultKeyBase64,
+          existingEntryCount: entries.length,
+        })
         return
       }
 
-      setState({ type: 'success' })
-      setTimeout(() => navigate('/my-secrets'), 1500)
+      // No conflict — import directly
+      await completePairing(vaultKeyBase64, [])
     } catch {
       setState({
         type: 'error',
         message: 'Incorrect password or invalid pairing link.',
       })
     }
+  }
+
+  const handleMergeChoice = async (mode: 'merge' | 'switch') => {
+    if (state.type !== 'merge_prompt') return
+    const entriesToMerge = mode === 'merge' ? await getEntries() : []
+    await completePairing(state.vaultKey, entriesToMerge)
   }
 
   if (!hasValidFragment) {
@@ -89,6 +114,47 @@ export default function PairDevice() {
         <h1>Pair Device</h1>
         <div className="success-message">
           <p>Device paired successfully! Redirecting to your vault...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (state.type === 'merge_prompt') {
+    return (
+      <div className="pair-device">
+        <h1>Pair Device</h1>
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>Different Vault Detected</h2>
+            <p className="helper-text">
+              This device has {state.existingEntryCount} existing{' '}
+              {state.existingEntryCount === 1 ? 'secret' : 'secrets'} in a different vault. How
+              would you like to proceed?
+            </p>
+            <div className="merge-options">
+              <button onClick={() => handleMergeChoice('merge')} className="button primary">
+                Merge
+              </button>
+              <p className="helper-text">
+                Combine your {state.existingEntryCount} existing{' '}
+                {state.existingEntryCount === 1 ? 'secret' : 'secrets'} into the paired vault.
+              </p>
+              <button onClick={() => handleMergeChoice('switch')} className="button secondary">
+                Switch
+              </button>
+              <p className="helper-text warning">
+                Switch to the paired vault without merging. Your existing secrets will only be
+                recoverable if you have a recovery kit for your current vault.
+              </p>
+            </div>
+            <button
+              onClick={() => setState({ type: 'input' })}
+              className="button text small"
+              style={{ marginTop: '0.5rem' }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     )

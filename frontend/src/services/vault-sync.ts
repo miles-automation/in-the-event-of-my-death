@@ -7,7 +7,14 @@
 import type { VaultEntry } from '../types'
 
 import { getVaultBlob, putVaultBlob, ApiError } from './api'
-import { getEntries, getMeta, replaceAllEntries, setMeta } from './vault'
+import {
+  deleteMeta,
+  getEntries,
+  getMeta,
+  importVaultKey,
+  replaceAllEntries,
+  setMeta,
+} from './vault'
 import {
   computeVaultId,
   decryptVaultBlob,
@@ -171,6 +178,57 @@ async function pushMerged(
     }
     throw err
   }
+}
+
+/**
+ * Import a new vault key and sync, optionally merging in entries from the old vault.
+ *
+ * 1. Imports the new vault key
+ * 2. Clears stale sync metadata (old vault's tokens)
+ * 3. Syncs with the new vault on the server
+ * 4. If entriesToMerge is non-empty, merges them in and pushes
+ */
+export async function importAndSync(
+  newVaultKeyBase64: string,
+  entriesToMerge: VaultEntry[],
+): Promise<SyncResult> {
+  // Switch to the new vault key
+  await importVaultKey(newVaultKeyBase64)
+
+  // Clear old vault's sync metadata — invalid for new vault
+  await deleteMeta(META_SYNC_TOKEN)
+  await deleteMeta(META_LAST_ETAG)
+
+  // Clear local entries before sync so old entries don't leak into new vault
+  await replaceAllEntries([])
+
+  // Sync with new vault (pulls remote entries or bootstraps)
+  const syncResult = await syncVault(newVaultKeyBase64)
+
+  if (syncResult.status === 'error') {
+    return syncResult
+  }
+
+  // If merging old entries, combine them with what the new vault has
+  if (entriesToMerge.length > 0) {
+    const merged = mergeEntries(entriesToMerge, syncResult.entriesAfterSync)
+    await replaceAllEntries(merged)
+
+    // Push merged state to server
+    const vaultId = await computeVaultId(newVaultKeyBase64)
+    const aeadKey = await deriveVaultAeadKey(newVaultKeyBase64)
+    const syncToken = await getMeta(META_SYNC_TOKEN)
+    const etag = await getMeta(META_LAST_ETAG)
+
+    if (syncToken && etag) {
+      return pushMerged(vaultId, aeadKey, syncToken, merged, etag)
+    }
+
+    // If we just bootstrapped (no etag yet), the entries are already local
+    return { status: 'synced', entriesAfterSync: merged }
+  }
+
+  return syncResult
 }
 
 /**
