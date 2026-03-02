@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { getEntries, updateEntry, deleteEntry, initVault, importVaultKey } from '../services/vault'
-import { syncVault } from '../services/vault-sync'
+import {
+  getEntries,
+  updateEntry,
+  deleteEntry,
+  initVault,
+  getVaultKeyIfExists,
+} from '../services/vault'
+import { syncVault, importAndSync } from '../services/vault-sync'
 import { wrapVaultKeyWithPassword } from '../services/vault-crypto'
 import { getEditSecretStatus } from '../services/api'
 import { formatDateForDisplay } from '../utils/dates'
@@ -72,6 +78,10 @@ export default function MySecrets() {
   const [pairLink, setPairLink] = useState('')
   const [pairCopied, setPairCopied] = useState(false)
   const [recoveryImporting, setRecoveryImporting] = useState(false)
+  const [mergePrompt, setMergePrompt] = useState<{
+    newVaultKey: string
+    existingEntryCount: number
+  } | null>(null)
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportKitJson, setExportKitJson] = useState('')
   const [exportCopied, setExportCopied] = useState(false)
@@ -284,15 +294,26 @@ export default function MySecrets() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    setRecoveryImporting(true)
     try {
       const text = await file.text()
       const kit = JSON.parse(text)
       if (!kit.vaultKey || kit.version !== 1) {
         throw new Error('Invalid recovery kit format')
       }
-      await importVaultKey(kit.vaultKey)
-      await syncVault(kit.vaultKey)
+
+      // Check if this is a different vault key with existing entries
+      const currentKey = await getVaultKeyIfExists()
+      const entries = await getEntries()
+
+      if (currentKey && currentKey !== kit.vaultKey && entries.length > 0) {
+        // Show merge/switch prompt
+        setMergePrompt({ newVaultKey: kit.vaultKey, existingEntryCount: entries.length })
+        return
+      }
+
+      // No conflict — import directly
+      setRecoveryImporting(true)
+      await importAndSync(kit.vaultKey, [])
       await loadEntries()
     } catch (err) {
       setState({
@@ -303,6 +324,24 @@ export default function MySecrets() {
     setRecoveryImporting(false)
     // Reset file input
     e.target.value = ''
+  }
+
+  const handleMergeChoice = async (mode: 'merge' | 'switch') => {
+    if (!mergePrompt) return
+
+    setMergePrompt(null)
+    setRecoveryImporting(true)
+    try {
+      const entriesToMerge = mode === 'merge' ? await getEntries() : []
+      await importAndSync(mergePrompt.newVaultKey, entriesToMerge)
+      await loadEntries()
+    } catch (err) {
+      setState({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to import vault',
+      })
+    }
+    setRecoveryImporting(false)
   }
 
   if (state.type === 'loading') {
@@ -357,6 +396,42 @@ export default function MySecrets() {
             </label>
           </div>
         </div>
+        {mergePrompt && (
+          <div className="modal-overlay" onClick={() => setMergePrompt(null)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h2>Different Vault Detected</h2>
+              <p className="helper-text">
+                This device has {mergePrompt.existingEntryCount} existing{' '}
+                {mergePrompt.existingEntryCount === 1 ? 'secret' : 'secrets'} in a different vault.
+                How would you like to proceed?
+              </p>
+              <div className="merge-options">
+                <button onClick={() => handleMergeChoice('merge')} className="button primary">
+                  Merge
+                </button>
+                <p className="helper-text">
+                  Combine your {mergePrompt.existingEntryCount} existing{' '}
+                  {mergePrompt.existingEntryCount === 1 ? 'secret' : 'secrets'} into the imported
+                  vault.
+                </p>
+                <button onClick={() => handleMergeChoice('switch')} className="button secondary">
+                  Switch
+                </button>
+                <p className="helper-text warning">
+                  Switch to the imported vault without merging. Your existing secrets will only be
+                  recoverable if you have a recovery kit for your current vault.
+                </p>
+              </div>
+              <button
+                onClick={() => setMergePrompt(null)}
+                className="button text small"
+                style={{ marginTop: '0.5rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -453,6 +528,43 @@ export default function MySecrets() {
               style={{ marginTop: '0.5rem' }}
             >
               Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mergePrompt && (
+        <div className="modal-overlay" onClick={() => setMergePrompt(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Different Vault Detected</h2>
+            <p className="helper-text">
+              This device has {mergePrompt.existingEntryCount} existing{' '}
+              {mergePrompt.existingEntryCount === 1 ? 'secret' : 'secrets'} in a different vault.
+              How would you like to proceed?
+            </p>
+            <div className="merge-options">
+              <button onClick={() => handleMergeChoice('merge')} className="button primary">
+                Merge
+              </button>
+              <p className="helper-text">
+                Combine your {mergePrompt.existingEntryCount} existing{' '}
+                {mergePrompt.existingEntryCount === 1 ? 'secret' : 'secrets'} into the imported
+                vault.
+              </p>
+              <button onClick={() => handleMergeChoice('switch')} className="button secondary">
+                Switch
+              </button>
+              <p className="helper-text warning">
+                Switch to the imported vault without merging. Your existing secrets will only be
+                recoverable if you have a recovery kit for your current vault.
+              </p>
+            </div>
+            <button
+              onClick={() => setMergePrompt(null)}
+              className="button text small"
+              style={{ marginTop: '0.5rem' }}
+            >
+              Cancel
             </button>
           </div>
         </div>
