@@ -72,6 +72,9 @@ export default function MySecrets() {
   const [pairLink, setPairLink] = useState('')
   const [pairCopied, setPairCopied] = useState(false)
   const [recoveryImporting, setRecoveryImporting] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [exportKitJson, setExportKitJson] = useState('')
+  const [exportCopied, setExportCopied] = useState(false)
 
   useEffect(() => {
     document.title = 'My Secrets | In The Event Of My Death'
@@ -238,7 +241,7 @@ export default function MySecrets() {
     setPairCopied(false)
   }
 
-  const exportRecoveryKit = async () => {
+  const openExportModal = async () => {
     try {
       const { vaultKey } = await initVault()
       const kit = {
@@ -248,16 +251,33 @@ export default function MySecrets() {
         warning:
           'This file contains your vault key. Anyone with this file can access your vault. Store it securely.',
       }
-      const blob = new Blob([JSON.stringify(kit, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'ieomd-recovery-kit.json'
-      a.click()
-      URL.revokeObjectURL(url)
+      setExportKitJson(JSON.stringify(kit, null, 2))
+      setShowExportModal(true)
     } catch {
       // Vault key unavailable
     }
+  }
+
+  const downloadRecoveryKit = () => {
+    const blob = new Blob([exportKitJson], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'ieomd-recovery-kit.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const copyRecoveryKit = async () => {
+    await navigator.clipboard.writeText(exportKitJson)
+    setExportCopied(true)
+    setTimeout(() => setExportCopied(false), 2000)
+  }
+
+  const closeExportModal = () => {
+    setShowExportModal(false)
+    setExportKitJson('')
+    setExportCopied(false)
   }
 
   const importRecoveryKit = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -349,7 +369,7 @@ export default function MySecrets() {
         <button onClick={() => setShowPairModal(true)} className="button secondary small">
           Pair Device
         </button>
-        <button onClick={exportRecoveryKit} className="button secondary small">
+        <button onClick={openExportModal} className="button secondary small">
           Export Recovery Kit
         </button>
       </div>
@@ -400,6 +420,35 @@ export default function MySecrets() {
             )}
             <button
               onClick={closePairModal}
+              className="button text small"
+              style={{ marginTop: '0.5rem' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showExportModal && (
+        <div className="modal-overlay" onClick={closeExportModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Recovery Kit</h2>
+            <div className="warning">
+              <p style={{ margin: 0 }}>
+                <strong>Treat this like a password.</strong> Anyone with this file can access your
+                vault. Store it somewhere safe and offline.
+              </p>
+            </div>
+            <div className="export-kit-actions">
+              <button onClick={downloadRecoveryKit} className="button primary small">
+                Download
+              </button>
+              <button onClick={copyRecoveryKit} className="button secondary small">
+                {exportCopied ? 'Copied!' : 'Copy to Clipboard'}
+              </button>
+            </div>
+            <button
+              onClick={closeExportModal}
               className="button text small"
               style={{ marginTop: '0.5rem' }}
             >
