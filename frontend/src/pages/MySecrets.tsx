@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { getEntries, updateEntry, deleteEntry, initVault } from '../services/vault'
+import { getEntries, updateEntry, deleteEntry, initVault, importVaultKey } from '../services/vault'
 import { syncVault } from '../services/vault-sync'
 import { wrapVaultKeyWithPassword } from '../services/vault-crypto'
 import { getEditSecretStatus } from '../services/api'
