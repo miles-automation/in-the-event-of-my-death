@@ -10,6 +10,7 @@ import WhyBitcoin from './pages/WhyBitcoin'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import MySecrets from './pages/MySecrets'
+import PairDevice from './pages/PairDevice'
 import './App.css'
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/my-secrets" element={<MySecrets />} />
+            <Route path="/pair" element={<PairDevice />} />
           </Routes>
         </main>
 

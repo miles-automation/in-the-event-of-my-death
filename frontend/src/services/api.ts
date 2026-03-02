@@ -216,4 +216,67 @@ export async function uploadAttachment(
   return handleResponse<AttachmentUploadResponse>(response)
 }
 
+// --- Vault Sync API ---
+
+export type VaultPullStatus = 'ok' | 'not_found'
+
+export interface VaultPullResult {
+  status: VaultPullStatus
+  ciphertext?: string
+  etag?: string
+}
+
+export interface VaultPutResult {
+  etag: string
+  created: boolean
+}
+
+/**
+ * Fetch the encrypted vault blob from the server.
+ */
+export async function getVaultBlob(vaultId: string, syncToken: string): Promise<VaultPullResult> {
+  const response = await fetch(`${API_BASE}/vault/${vaultId}`, {
+    headers: { Authorization: `Bearer ${syncToken}` },
+  })
+
+  if (response.status === 404) {
+    return { status: 'not_found' }
+  }
+
+  const data = await handleResponse<{ ciphertext: string; etag: string }>(response)
+  return {
+    status: 'ok',
+    ciphertext: data.ciphertext,
+    etag: data.etag,
+  }
+}
+
+/**
+ * Create or update the encrypted vault blob on the server.
+ */
+export async function putVaultBlob(
+  vaultId: string,
+  syncToken: string,
+  ciphertext: string,
+  options: { ifMatch?: string; ifNoneMatch?: string },
+): Promise<VaultPutResult> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${syncToken}`,
+  }
+  if (options.ifMatch) {
+    headers['If-Match'] = `"${options.ifMatch}"`
+  }
+  if (options.ifNoneMatch) {
+    headers['If-None-Match'] = options.ifNoneMatch
+  }
+
+  const response = await fetch(`${API_BASE}/vault/${vaultId}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify({ ciphertext }),
+  })
+  return handleResponse<VaultPutResult>(response)
+}
+
 export { ApiError }

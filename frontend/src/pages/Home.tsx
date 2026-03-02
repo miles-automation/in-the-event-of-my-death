@@ -18,7 +18,8 @@ import {
   validateCapabilityToken,
   type CapabilityTokenInfo,
 } from '../services/api'
-import { addEntry } from '../services/vault'
+import { addEntry, initVault } from '../services/vault'
+import { syncVault } from '../services/vault-sync'
 import { solveChallenge } from '../services/pow'
 import { encodeSecretPayload, type AttachmentRef } from '../services/secretPayload'
 import { generateShareableLinks } from '../utils/urlFragments'
@@ -318,8 +319,9 @@ export default function Home() {
       setCreatedUnlockAt(new Date(response.unlock_at))
       setCreatedExpiresAt(new Date(response.expires_at))
 
-      // Auto-track in local vault (graceful degradation if IndexedDB unavailable)
+      // Auto-track in local vault and sync (graceful degradation if unavailable)
       try {
+        const now = new Date().toISOString()
         await addEntry({
           secretId: response.secret_id,
           editToken,
@@ -327,8 +329,13 @@ export default function Home() {
           unlockAt: response.unlock_at,
           expiresAt: response.expires_at,
           status: 'pending',
+          lastModified: now,
         })
         setVaultSaved(true)
+
+        // Push to server in background (fire-and-forget)
+        const { vaultKey } = await initVault()
+        syncVault(vaultKey).catch(() => {})
       } catch {
         // IndexedDB unavailable — silent failure
       }
