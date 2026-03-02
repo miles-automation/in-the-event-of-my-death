@@ -212,3 +212,43 @@ export async function deleteEntry(secretId: string): Promise<void> {
     await transactionDone(tx)
   })
 }
+
+// --- Phase 2: Sync helpers ---
+
+/** Read a meta value by key. */
+export async function getMeta(key: string): Promise<string | null> {
+  return withDb(async (db) => getMetaValue(db, key))
+}
+
+/** Write a meta value by key. */
+export async function setMeta(key: string, value: string): Promise<void> {
+  return withDb(async (db) => setMetaValue(db, key, value))
+}
+
+/**
+ * Replace all vault entries with the provided set.
+ *
+ * Used after a sync merge to persist the merged entries.
+ */
+export async function replaceAllEntries(entries: VaultEntry[]): Promise<void> {
+  return withDb(async (db) => {
+    const tx = db.transaction(STORE_ENTRIES, 'readwrite')
+    const store = tx.objectStore(STORE_ENTRIES)
+    await requestToPromise(store.clear())
+    for (const entry of entries) {
+      await requestToPromise(store.put(entry))
+    }
+    await transactionDone(tx)
+  })
+}
+
+/**
+ * Import a vaultKey from an external source (pairing or recovery).
+ *
+ * Overwrites any existing vaultKey. Callers should sync after import.
+ */
+export async function importVaultKey(vaultKeyBase64: string): Promise<void> {
+  return withDb(async (db) => {
+    await setMetaValue(db, VAULT_KEY_META_KEY, vaultKeyBase64)
+  })
+}

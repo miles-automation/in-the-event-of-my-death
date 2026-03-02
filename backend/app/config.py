@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     # BTCPay Server
     btcpay_webhook_secret: str | None = None
 
+    # Vault
+    max_vault_blob_size: int = 5_000_000  # 5MB
+    rate_limit_vault_reads: str = "30/minute"
+    rate_limit_vault_writes: str = "10/minute"
+
     # Object Storage (S3-compatible; e.g. DigitalOcean Spaces, MinIO)
     object_storage_enabled: bool = False
     object_storage_endpoint: str | None = None

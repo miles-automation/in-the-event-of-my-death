@@ -111,4 +111,5 @@ export interface VaultEntry {
   recipientHint?: string
   status?: VaultEntryStatus
   lastCheckedAt?: string
+  lastModified?: string
 }

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { getEntries, updateEntry, deleteEntry } from '../services/vault'
+import { getEntries, updateEntry, deleteEntry, initVault } from '../services/vault'
+import { syncVault } from '../services/vault-sync'
+import { wrapVaultKeyWithPassword } from '../services/vault-crypto'
 import { getEditSecretStatus } from '../services/api'
 import { formatDateForDisplay } from '../utils/dates'
 import type { VaultEntry, VaultEntryStatus } from '../types'
@@ -61,9 +63,15 @@ function mapApiStatus(apiStatus: string): VaultEntryStatus {
 export default function MySecrets() {
   const [state, setState] = useState<State>({ type: 'loading' })
   const [refreshing, setRefreshing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [editingLabel, setEditingLabel] = useState<string | null>(null)
   const [labelDraft, setLabelDraft] = useState('')
+  const [showPairModal, setShowPairModal] = useState(false)
+  const [pairPassword, setPairPassword] = useState('')
+  const [pairLink, setPairLink] = useState('')
+  const [pairCopied, setPairCopied] = useState(false)
+  const [recoveryImporting, setRecoveryImporting] = useState(false)
 
   useEffect(() => {
     document.title = 'My Secrets | In The Event Of My Death'
@@ -71,6 +79,29 @@ export default function MySecrets() {
 
   const loadEntries = useCallback(async () => {
     try {
+      // Sync with server first (merges remote entries into local)
+      setSyncing(true)
+      try {
+        const { vaultKey } = await initVault()
+        const result = await syncVault(vaultKey)
+        if (result.status !== 'error') {
+          setSyncing(false)
+          const entries = result.entriesAfterSync
+          if (entries.length === 0) {
+            setState({ type: 'empty' })
+          } else {
+            const sorted = [...entries].sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            )
+            setState({ type: 'loaded', entries: sorted })
+          }
+          return
+        }
+      } catch {
+        // Sync failed — fall back to local entries
+      }
+      setSyncing(false)
+
       const entries = await getEntries()
       if (entries.length === 0) {
         setState({ type: 'empty' })
@@ -179,6 +210,81 @@ export default function MySecrets() {
     setEditingLabel(null)
   }
 
+  const generatePairLink = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!pairPassword) return
+
+    try {
+      const { vaultKey } = await initVault()
+      const { encrypted, salt } = await wrapVaultKeyWithPassword(vaultKey, pairPassword)
+      const link = `${window.location.origin}/pair#encrypted=${encodeURIComponent(encrypted)}&salt=${encodeURIComponent(salt)}`
+      setPairLink(link)
+    } catch {
+      // Crypto failure — unlikely but handle gracefully
+      setPairLink('')
+    }
+  }
+
+  const copyPairLink = async () => {
+    await navigator.clipboard.writeText(pairLink)
+    setPairCopied(true)
+    setTimeout(() => setPairCopied(false), 2000)
+  }
+
+  const closePairModal = () => {
+    setShowPairModal(false)
+    setPairPassword('')
+    setPairLink('')
+    setPairCopied(false)
+  }
+
+  const exportRecoveryKit = async () => {
+    try {
+      const { vaultKey } = await initVault()
+      const kit = {
+        version: 1,
+        vaultKey,
+        exportedAt: new Date().toISOString(),
+        warning:
+          'This file contains your vault key. Anyone with this file can access your vault. Store it securely.',
+      }
+      const blob = new Blob([JSON.stringify(kit, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'ieomd-recovery-kit.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // Vault key unavailable
+    }
+  }
+
+  const importRecoveryKit = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setRecoveryImporting(true)
+    try {
+      const text = await file.text()
+      const kit = JSON.parse(text)
+      if (!kit.vaultKey || kit.version !== 1) {
+        throw new Error('Invalid recovery kit format')
+      }
+      await importVaultKey(kit.vaultKey)
+      await syncVault(kit.vaultKey)
+      await loadEntries()
+    } catch (err) {
+      setState({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to import recovery kit',
+      })
+    }
+    setRecoveryImporting(false)
+    // Reset file input
+    e.target.value = ''
+  }
+
   if (state.type === 'loading') {
     return (
       <div className="my-secrets">
@@ -217,6 +323,19 @@ export default function MySecrets() {
           <Link to="/" className="button primary">
             Create Your First Secret
           </Link>
+          <div style={{ marginTop: '1.5rem' }}>
+            <p className="helper-text">Have a recovery kit or pairing link?</p>
+            <label className="button secondary small" style={{ cursor: 'pointer' }}>
+              {recoveryImporting ? 'Importing...' : 'Import Recovery Kit'}
+              <input
+                type="file"
+                accept=".json"
+                onChange={importRecoveryKit}
+                style={{ display: 'none' }}
+                disabled={recoveryImporting}
+              />
+            </label>
+          </div>
         </div>
       </div>
     )
@@ -226,6 +345,71 @@ export default function MySecrets() {
     <div className="my-secrets">
       <h1>My Secrets</h1>
 
+      <div className="vault-actions">
+        <button onClick={() => setShowPairModal(true)} className="button secondary small">
+          Pair Device
+        </button>
+        <button onClick={exportRecoveryKit} className="button secondary small">
+          Export Recovery Kit
+        </button>
+      </div>
+
+      {showPairModal && (
+        <div className="modal-overlay" onClick={closePairModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Pair Another Device</h2>
+            {!pairLink ? (
+              <form onSubmit={generatePairLink}>
+                <p className="helper-text">
+                  Set a password to protect the pairing link. Share the link and password
+                  separately.
+                </p>
+                <div className="form-group">
+                  <label htmlFor="pair-pw">Password</label>
+                  <input
+                    id="pair-pw"
+                    type="password"
+                    value={pairPassword}
+                    onChange={(e) => setPairPassword(e.target.value)}
+                    placeholder="Choose a password"
+                    autoFocus
+                    required
+                    minLength={4}
+                  />
+                </div>
+                <button type="submit" className="button primary" disabled={!pairPassword}>
+                  Generate Link
+                </button>
+              </form>
+            ) : (
+              <div>
+                <p className="helper-text">
+                  Copy this link and open it on your other device. You will need the password to
+                  complete pairing.
+                </p>
+                <div className="pair-link-box">
+                  <code className="pair-link-text">{pairLink.slice(0, 60)}...</code>
+                  <button onClick={copyPairLink} className="button secondary small">
+                    {pairCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <p className="helper-text warning">
+                  This link contains your encrypted vault key. Only share it with yourself.
+                </p>
+              </div>
+            )}
+            <button
+              onClick={closePairModal}
+              className="button text small"
+              style={{ marginTop: '0.5rem' }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {syncing && <p className="refresh-indicator">Syncing vault...</p>}
       {refreshing && <p className="refresh-indicator">Refreshing statuses...</p>}
 
       <div className="secrets-list">

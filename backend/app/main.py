@@ -23,6 +23,7 @@ from app.routers import (
     challenges,
     feedback,
     secrets,
+    vault,
 )
 from app.scheduler import shutdown_scheduler, start_scheduler
 from app.services.matrix_service import send_error_alert
@@ -42,7 +43,7 @@ def check_database_tables():
     Raises RuntimeError with helpful message if tables are missing.
     This helps catch the case where migrations haven't been run.
     """
-    required_tables = {"secrets", "pow_challenges", "capability_tokens"}
+    required_tables = {"secrets", "pow_challenges", "capability_tokens", "vaults"}
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
 
@@ -179,6 +180,7 @@ app.include_router(challenges.router, prefix="/api/v1", tags=["challenges"])
 app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
 app.include_router(secrets.router, prefix="/api/v1", tags=["secrets"])
 app.include_router(btcpay_webhook.router, prefix="/api/v1", tags=["btcpay"])
+app.include_router(vault.router, prefix="/api/v1", tags=["vault"])
 
 
 def check_database_connection(db: Session) -> None:
