@@ -1,13 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  getEntries,
-  updateEntry,
-  deleteEntry,
-  initVault,
-  getVaultKeyIfExists,
-} from '../services/vault'
-import { syncVault, importAndSync } from '../services/vault-sync'
+import { getEntries, updateEntry, initVault, getVaultKeyIfExists } from '../services/vault'
+import { syncVault, importAndSync, deleteEntryAndSync } from '../services/vault-sync'
 import { wrapVaultKeyWithPassword } from '../services/vault-crypto'
 import { getEditSecretStatus } from '../services/api'
 import { formatDateForDisplay } from '../utils/dates'
@@ -191,9 +185,18 @@ export default function MySecrets() {
 
   const handleDelete = async (secretId: string) => {
     try {
-      await deleteEntry(secretId)
+      const { vaultKey } = await initVault()
+      const result = await deleteEntryAndSync(vaultKey, secretId)
       setConfirmDelete(null)
-      await loadEntries()
+      const entries = result.entriesAfterSync
+      if (entries.length === 0) {
+        setState({ type: 'empty' })
+      } else {
+        const sorted = [...entries].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )
+        setState({ type: 'loaded', entries: sorted })
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete entry'
       setState({ type: 'error', message })

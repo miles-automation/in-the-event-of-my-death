@@ -8,6 +8,7 @@ import type { VaultEntry } from '../types'
 
 import { getVaultBlob, putVaultBlob, ApiError } from './api'
 import {
+  deleteEntry,
   deleteMeta,
   getEntries,
   getMeta,
@@ -229,6 +230,56 @@ export async function importAndSync(
   }
 
   return syncResult
+}
+
+/**
+ * Delete an entry from both local IndexedDB and the server vault.
+ *
+ * Pulls the latest remote state, removes the entry from both sides,
+ * and pushes the result so the deletion propagates to all devices.
+ */
+export async function deleteEntryAndSync(
+  vaultKeyBase64: string,
+  secretId: string,
+): Promise<SyncResult> {
+  try {
+    // Delete from local IndexedDB
+    await deleteEntry(secretId)
+
+    const vaultId = await computeVaultId(vaultKeyBase64)
+    const aeadKey = await deriveVaultAeadKey(vaultKeyBase64)
+    const localEntries = await getEntries()
+    const syncToken = await getMeta(META_SYNC_TOKEN)
+
+    if (!syncToken) {
+      // No server vault — just return local state
+      return { status: 'synced', entriesAfterSync: localEntries }
+    }
+
+    const pullResult = await getVaultBlob(vaultId, syncToken)
+
+    if (pullResult.status === 'not_found') {
+      return { status: 'synced', entriesAfterSync: localEntries }
+    }
+
+    const remoteBlob = await decryptVaultBlob(pullResult.ciphertext!, aeadKey, vaultId)
+
+    if (remoteBlob.syncToken !== syncToken) {
+      await setMeta(META_SYNC_TOKEN, remoteBlob.syncToken)
+    }
+
+    // Merge local + remote, but filter out the deleted entry from remote
+    const remoteWithoutDeleted = remoteBlob.entries.filter((e) => e.secretId !== secretId)
+    const merged = mergeEntries(localEntries, remoteWithoutDeleted)
+
+    await replaceAllEntries(merged)
+
+    // Push to server so deletion propagates
+    return pushMerged(vaultId, aeadKey, remoteBlob.syncToken, merged, pullResult.etag!)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Delete sync failed'
+    return { status: 'error', entriesAfterSync: await getEntries(), error: message }
+  }
 }
 
 /**
