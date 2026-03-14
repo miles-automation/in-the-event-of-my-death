@@ -1,0 +1,71 @@
+version = 1
+
+[project]
+key = "ieomd"
+display_name = "In the Event of My Death"
+
+[dev]
+start_command = "make dev"
+frontend_port = 5173
+backend_port = 8000
+ready_url = "http://localhost:{frontend_port}"
+ready_timeout_seconds = 30
+
+[auth]
+mode = "none"
+
+[[screens]]
+id = "home"
+route = "/"
+description = "Home - Create a secret"
+auth_required = false
+viewport = { width = 1440, height = 900 }
+
+[[screens]]
+id = "home-mobile"
+route = "/"
+description = "Home (mobile)"
+auth_required = false
+viewport = { width = 390, height = 844 }
+
+[[screens]]
+id = "about"
+route = "/about"
+description = "About page"
+auth_required = false
+viewport = { width = 1440, height = 900 }
+
+[[screens]]
+id = "pricing"
+route = "/pricing"
+description = "Pricing page"
+auth_required = false
+viewport = { width = 1440, height = 900 }
+
+[[screens]]
+id = "feedback"
+route = "/feedback"
+description = "Feedback form"
+auth_required = false
+viewport = { width = 1440, height = 900 }
+
+[[screens]]
+id = "why-bitcoin"
+route = "/why-bitcoin"
+description = "Why Bitcoin page"
+auth_required = false
+viewport = { width = 1440, height = 900 }
+
+[[screens]]
+id = "privacy"
+route = "/privacy"
+description = "Privacy policy"
+auth_required = false
+viewport = { width = 1440, height = 900 }
+
+[[screens]]
+id = "terms"
+route = "/terms"
+description = "Terms of service"
+auth_required = false
+viewport = { width = 1440, height = 900 }
