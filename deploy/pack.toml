@@ -2,7 +2,7 @@ version = 1
 
 [project]
 key = "ieomd"
-repo = "richmiles/in-the-event-of-my-death"
+repo = "miles-automation/in-the-event-of-my-death"
 
 [staging]
 tier = "ephemeral"
@@ -16,7 +16,7 @@ vpc_uuid = "8116bba4-063f-415f-ad8d-12a13bb8b2bd"
 
 [[services]]
 name = "app"
-image = "ghcr.io/richmiles/ieomd-app"
+image = "ghcr.io/miles-automation/ieomd-app"
 container_port = 8000
 
 [[services.routes]]

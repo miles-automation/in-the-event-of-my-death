@@ -2,7 +2,7 @@
 
 IEOMD production runs on the shared `platform` droplet managed by the `platform-infra` repository.
 
-This repository builds a single production image (`ghcr.io/richmiles/ieomd-app`) and includes:
+This repository builds a single production image (`ghcr.io/miles-automation/ieomd-app`) and includes:
 
 - A cheap PR gate (`make check`) on every PR
 - An expensive on-demand ephemeral staging gate (DigitalOcean droplet)
@@ -11,7 +11,7 @@ This repository builds a single production image (`ghcr.io/richmiles/ieomd-app`)
 ## Fleet summary
 
 - Spark key: `ieomd`
-- Image: `ghcr.io/richmiles/ieomd-app:<tag>`
+- Image: `ghcr.io/miles-automation/ieomd-app:<tag>`
 - Compose service: `ieomd`
 - Prod domains: `https://ieomd.com` (www redirects to apex)
 - Health URLs:
@@ -33,7 +33,7 @@ Internet → platform Caddy (TLS) → ieomd:8000
 
 ## Deployment model (production)
 
-1. Build and push `ghcr.io/richmiles/ieomd-app:sha-<short>` via GitHub Actions.
+1. Build and push `ghcr.io/miles-automation/ieomd-app:sha-<short>` via GitHub Actions.
 2. Promote to production (pins `IEOMD_IMAGE_TAG=sha-<short>` on the droplet, pulls, migrates, restarts, health-checks).
 3. Verify:
    - `https://ieomd.com/healthz`

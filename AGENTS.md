@@ -23,7 +23,7 @@ This repo participates in the Spark Swarm “fleet” standard for staging and p
 - Health URL: `https://ieomd.com/healthz`
 
 ### Image + secrets
-- Image: `ghcr.io/richmiles/ieomd-app:<tag>`
+- Image: `ghcr.io/miles-automation/ieomd-app:<tag>`
 - Secrets source: Spark Swarm secrets export
   - Staging: `project=ieomd environment=staging`
   - Production: `project=ieomd environment=production` (mirrored into `/root/platform-infra/.env`)
