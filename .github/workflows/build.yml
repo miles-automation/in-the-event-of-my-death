@@ -36,9 +36,7 @@ jobs:
           python-version: "3.14"
           cache: "pip"
       - name: Install Poetry
-        run: pipx install poetry
-      - name: Ensure pipx bin path
-        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: pip install poetry==1.8.3
       - name: Install backend deps
         working-directory: backend
         run: poetry install --no-interaction
