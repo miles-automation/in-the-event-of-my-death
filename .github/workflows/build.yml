@@ -37,6 +37,8 @@ jobs:
           cache: "pip"
       - name: Install Poetry
         run: pipx install poetry
+      - name: Ensure pipx bin path
+        run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Install backend deps
         working-directory: backend
         run: poetry install --no-interaction
@@ -74,7 +76,26 @@ jobs:
           echo "sha_tag=sha-${short_sha}" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/ieomd-app" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            VITE_BTCPAY_POS_URL=https://pay.sparkswarm.com/apps/iDBhhgYHJbiqqvCLCDpPWXf8mx1/pos
+          tags: ${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.sha_tag }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ steps.tags.outputs.image }}:${{ steps.tags.outputs.sha_tag }}
+          format: table
+          exit-code: 0
+          severity: HIGH,CRITICAL
+
+      - name: Push image
         uses: docker/build-push-action@v6
         with:
           context: .
