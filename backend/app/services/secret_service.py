@@ -1,6 +1,7 @@
 import base64
 from datetime import UTC, datetime
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.secret import Secret
@@ -109,6 +110,33 @@ def find_secret_by_id(db: Session, secret_id: str) -> Secret | None:
     so ID-based status checks must not filter on `is_deleted`.
     """
     return db.query(Secret).filter(Secret.id == secret_id).first()
+
+
+# --- get_*_or_404 helpers (PLATFORM_PATTERNS.md) ---
+
+
+def get_secret_by_edit_token_or_404(db: Session, edit_token: str) -> Secret:
+    """Lookup by edit token or raise 404."""
+    secret = find_secret_by_edit_token(db, edit_token)
+    if not secret:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
+    return secret
+
+
+def get_secret_by_decrypt_token_or_404(db: Session, decrypt_token: str) -> Secret:
+    """Lookup by decrypt token or raise 404."""
+    secret = find_secret_by_decrypt_token(db, decrypt_token)
+    if not secret:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
+    return secret
+
+
+def get_secret_by_id_or_404(db: Session, secret_id: str) -> Secret:
+    """Lookup by secret ID or raise 404."""
+    secret = find_secret_by_id(db, secret_id)
+    if not secret:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Secret not found")
+    return secret
 
 
 def update_secret_dates(

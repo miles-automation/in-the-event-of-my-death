@@ -4,6 +4,7 @@ import hmac
 import uuid
 from datetime import UTC, datetime
 
+from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models.vault import Vault
@@ -30,6 +31,18 @@ def verify_sync_token(vault: Vault, sync_token: str) -> bool:
 
 def get_vault(db: Session, vault_id: str) -> Vault | None:
     return db.query(Vault).filter(Vault.vault_id == vault_id).first()
+
+
+def get_vault_or_404(db: Session, vault_id: str, sync_token: str) -> Vault:
+    """Lookup vault by ID and verify sync token, or raise 404.
+
+    Returns 404 for both missing vaults and invalid sync tokens to avoid
+    confirming vault existence to unauthenticated callers.
+    """
+    vault = get_vault(db, vault_id)
+    if not vault or not verify_sync_token(vault, sync_token):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vault not found")
+    return vault
 
 
 def create_vault(

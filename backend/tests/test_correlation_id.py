@@ -57,7 +57,7 @@ def test_correlation_id_on_unhandled_exception(db_session, monkeypatch):
         raise RuntimeError("Unexpected database error")
 
     # Patch the function in the router module
-    monkeypatch.setattr(secrets, "find_secret_by_decrypt_token", raise_error)
+    monkeypatch.setattr(secrets, "get_secret_by_decrypt_token_or_404", raise_error)
 
     # Setup test client with raise_server_exceptions=False
     def override_get_db():

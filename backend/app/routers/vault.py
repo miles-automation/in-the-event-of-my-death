@@ -9,9 +9,8 @@ from app.middleware.rate_limit import limiter
 from app.schemas.vault import VaultGetResponse, VaultPutRequest, VaultPutResponse
 from app.services.vault_service import (
     create_vault,
-    get_vault,
+    get_vault_or_404,
     update_vault,
-    verify_sync_token,
 )
 
 router = APIRouter(tags=["vault"])
@@ -42,14 +41,7 @@ async def get_vault_blob(
     """Fetch the encrypted vault blob. Requires syncToken."""
     _validate_vault_id(vault_id)
     sync_token = _extract_sync_token(authorization)
-
-    vault = get_vault(db, vault_id)
-    if not vault:
-        raise HTTPException(status_code=404, detail="Vault not found")
-
-    if not verify_sync_token(vault, sync_token):
-        # Return 404 instead of 401 to avoid confirming vault existence
-        raise HTTPException(status_code=404, detail="Vault not found")
+    vault = get_vault_or_404(db, vault_id, sync_token)
 
     logger.info("vault_read", vault_id=vault_id[:8])
 
@@ -101,13 +93,7 @@ async def put_vault_blob(
 
     # Strip quotes from ETag header value
     etag_value = if_match.strip('"')
-
-    vault = get_vault(db, vault_id)
-    if not vault:
-        raise HTTPException(status_code=404, detail="Vault not found")
-
-    if not verify_sync_token(vault, sync_token):
-        raise HTTPException(status_code=404, detail="Vault not found")
+    vault = get_vault_or_404(db, vault_id, sync_token)
 
     try:
         vault, new_etag = update_vault(db, vault, body.ciphertext, etag_value)
