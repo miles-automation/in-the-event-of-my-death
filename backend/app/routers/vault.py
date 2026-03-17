@@ -14,7 +14,7 @@ from app.services.vault_service import (
     verify_sync_token,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["vault"])
 logger = structlog.get_logger()
 
 

@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.services.capability_token_service import create_capability_token
 
-router = APIRouter()
+router = APIRouter(tags=["btcpay"])
 logger = structlog.get_logger()
 
 

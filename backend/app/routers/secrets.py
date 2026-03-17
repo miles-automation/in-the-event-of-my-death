@@ -39,7 +39,7 @@ from app.services.secret_service import (
 )
 from app.services.storage_service import ObjectStorageService
 
-router = APIRouter()
+router = APIRouter(tags=["secrets"])
 logger = structlog.get_logger()
 
 

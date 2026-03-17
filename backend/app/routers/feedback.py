@@ -6,7 +6,7 @@ from app.middleware.rate_limit import limiter
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
 from app.services.matrix_service import send_feedback_notification
 
-router = APIRouter()
+router = APIRouter(tags=["feedback"])
 logger = structlog.get_logger()
 
 

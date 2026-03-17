@@ -8,7 +8,7 @@ from app.middleware.rate_limit import limiter
 from app.schemas.challenge import ChallengeCreate, ChallengeResponse
 from app.services.pow_service import generate_challenge
 
-router = APIRouter()
+router = APIRouter(tags=["challenges"])
 logger = structlog.get_logger()
 
 

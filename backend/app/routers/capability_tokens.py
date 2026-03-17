@@ -17,7 +17,7 @@ from app.services.capability_token_service import (
     validate_capability_token,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["capability-tokens"])
 logger = structlog.get_logger()
 
 

@@ -194,13 +194,13 @@ async def add_security_headers(request: Request, call_next):
 app.add_middleware(LoggingMiddleware)
 
 # Routers
-app.include_router(attachments.router, prefix="/api/v1", tags=["attachments"])
-app.include_router(capability_tokens.router, prefix="/api/v1", tags=["capability-tokens"])
-app.include_router(challenges.router, prefix="/api/v1", tags=["challenges"])
-app.include_router(feedback.router, prefix="/api/v1", tags=["feedback"])
-app.include_router(secrets.router, prefix="/api/v1", tags=["secrets"])
-app.include_router(btcpay_webhook.router, prefix="/api/v1", tags=["btcpay"])
-app.include_router(vault.router, prefix="/api/v1", tags=["vault"])
+app.include_router(attachments.router, prefix="/api/v1")
+app.include_router(capability_tokens.router, prefix="/api/v1")
+app.include_router(challenges.router, prefix="/api/v1")
+app.include_router(feedback.router, prefix="/api/v1")
+app.include_router(secrets.router, prefix="/api/v1")
+app.include_router(btcpay_webhook.router, prefix="/api/v1")
+app.include_router(vault.router, prefix="/api/v1")
 
 
 def check_database_connection(db: Session) -> None:
