@@ -32,7 +32,9 @@ from app.services.secret_service import (
     create_secret,
     find_secret_by_decrypt_token,
     find_secret_by_edit_token,
-    find_secret_by_id,
+    get_secret_by_decrypt_token_or_404,
+    get_secret_by_edit_token_or_404,
+    get_secret_by_id_or_404,
     get_secret_status,
     retrieve_secret,
     update_secret_dates,
@@ -235,10 +237,7 @@ async def edit_secret(
     Requires the edit token in the Authorization header.
     """
     edit_token = extract_bearer_token(authorization)
-
-    secret = find_secret_by_edit_token(db, edit_token)
-    if not secret:
-        raise HTTPException(status_code=404, detail="Secret not found")
+    secret = get_secret_by_edit_token_or_404(db, edit_token)
 
     try:
         updated_secret = update_secret_dates(db, secret, edit_data.unlock_at, edit_data.expires_at)
@@ -272,10 +271,7 @@ async def retrieve_secret_endpoint(
     download URLs are included in the response. These URLs are valid for 5 minutes.
     """
     decrypt_token = extract_bearer_token(authorization)
-
-    secret = find_secret_by_decrypt_token(db, decrypt_token)
-    if not secret:
-        raise HTTPException(status_code=404, detail="Secret not found")
+    secret = get_secret_by_decrypt_token_or_404(db, decrypt_token)
 
     # Check secret status BEFORE any destructive operations
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -407,12 +403,11 @@ async def get_status_by_id(
     Note: This endpoint intentionally reveals whether a secret exists and its timing metadata
     (unlock/expires) to anyone with the secret ID; it is rate-limited to reduce enumeration risk.
     """
-    secret = find_secret_by_id(db, secret_id)
-    if not secret:
-        raise HTTPException(status_code=404, detail="Secret not found")
+    secret = get_secret_by_id_or_404(db, secret_id)
 
-    status = get_secret_status(db, secret)
-    mapped_status = "unlocked" if status["status"] == "available" else status["status"]
+    secret_status = get_secret_status(db, secret)
+    raw = secret_status["status"]
+    mapped_status = "unlocked" if raw == "available" else raw
 
     return SecretIdStatusResponse(
         id=secret.id,
