@@ -12,7 +12,7 @@ from app.schemas.attachment import (
 from app.services.attachment_service import upload_attachment
 from app.services.storage_service import ObjectStorageService
 
-router = APIRouter()
+router = APIRouter(tags=["attachments"])
 logger = structlog.get_logger()
 
 
