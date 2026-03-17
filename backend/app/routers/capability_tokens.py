@@ -1,3 +1,5 @@
+import secrets
+
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -23,7 +25,7 @@ def verify_internal_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> 
     """Verify internal API key for token creation."""
     if not settings.internal_api_key:
         raise HTTPException(status_code=503, detail="Token creation not configured")
-    if x_api_key != settings.internal_api_key:
+    if not secrets.compare_digest(x_api_key, settings.internal_api_key):
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
