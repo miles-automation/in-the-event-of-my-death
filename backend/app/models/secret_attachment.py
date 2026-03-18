@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import Uuid
 
 from app.database import Base
 
@@ -24,9 +25,9 @@ class SecretAttachment(Base):
 
     __tablename__ = "secret_attachments"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    secret_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("secrets.id", ondelete="CASCADE"), nullable=True, index=True
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    secret_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("secrets.id", ondelete="CASCADE"), nullable=True, index=True
     )
 
     # Object storage location

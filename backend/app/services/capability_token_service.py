@@ -1,4 +1,5 @@
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
@@ -127,7 +128,7 @@ def validate_capability_token(db: Session, raw_token: str) -> dict:
 def consume_capability_token(
     db: Session,
     token: CapabilityToken,
-    secret_id: str,
+    secret_id: uuid.UUID,
 ) -> None:
     """
     Mark a capability token as consumed.

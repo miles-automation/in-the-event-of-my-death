@@ -1,5 +1,6 @@
 import base64
 import re
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
@@ -40,7 +41,7 @@ def strict_base64_decode(value: str, field_name: str) -> bytes:
 
 
 class PowProof(BaseModel):
-    challenge_id: str
+    challenge_id: uuid.UUID
     nonce: str = Field(..., min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
     counter: int = Field(..., ge=0)
     payload_hash: str = Field(..., min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
@@ -57,7 +58,7 @@ class SecretCreate(BaseModel):
     edit_token: str = Field(..., min_length=64, max_length=64, description="Hex token")
     decrypt_token: str = Field(..., min_length=64, max_length=64, description="Hex token")
     pow_proof: PowProof | None = None  # Optional when using capability token
-    attachment_ids: list[str] | None = None  # IDs of pre-uploaded attachments
+    attachment_ids: list[uuid.UUID] | None = None  # IDs of pre-uploaded attachments
 
     @field_validator("ciphertext")
     @classmethod
@@ -180,7 +181,7 @@ class SecretCreate(BaseModel):
 
 
 class SecretCreateResponse(BaseModel):
-    secret_id: str
+    secret_id: uuid.UUID
     unlock_at: UTCDateTime
     expires_at: UTCDateTime
     created_at: UTCDateTime
@@ -222,7 +223,7 @@ class SecretEditRequest(BaseModel):
 
 
 class SecretEditResponse(BaseModel):
-    secret_id: str
+    secret_id: uuid.UUID
     unlock_at: UTCDateTime
     expires_at: UTCDateTime
 
@@ -235,7 +236,7 @@ class SecretStatusResponse(BaseModel):
 
 
 class SecretIdStatusResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     # Always True: non-existent secrets return 404 (kept for API consistency).
     exists: Literal[True] = True
     status: Literal["pending", "unlocked", "expired", "retrieved"]

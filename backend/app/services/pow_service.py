@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
@@ -57,7 +58,7 @@ def generate_challenge(db: Session, payload_hash: str, ciphertext_size: int) -> 
 
 
 def validate_pow(
-    db: Session, challenge_id: str, nonce: str, counter: int, payload_hash: str
+    db: Session, challenge_id: uuid.UUID, nonce: str, counter: int, payload_hash: str
 ) -> Challenge:
     """
     Validate a proof-of-work solution WITHOUT marking the challenge as used.

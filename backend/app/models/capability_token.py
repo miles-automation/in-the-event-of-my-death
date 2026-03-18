@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.types import Uuid
 
 from app.database import Base
 
@@ -23,7 +24,7 @@ class CapabilityToken(Base):
 
     __tablename__ = "capability_tokens"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Token lookup (same pattern as secrets: prefix + hash)
     token_prefix: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
@@ -42,8 +43,8 @@ class CapabilityToken(Base):
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     # Consumption tracking
-    consumed_by_secret_id: Mapped[str | None] = mapped_column(
-        String(36),
+    consumed_by_secret_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
         ForeignKey("secrets.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
