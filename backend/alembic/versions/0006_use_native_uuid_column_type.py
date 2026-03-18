@@ -32,13 +32,29 @@ _UUID_COLUMNS: list[tuple[str, str]] = [
 ]
 
 
+# FK constraints referencing secrets.id — must drop before altering PK type
+_FK_CONSTRAINTS: list[tuple[str, str, str, str, str]] = [
+    (
+        "capability_tokens_consumed_by_secret_id_fkey",
+        "capability_tokens",
+        "consumed_by_secret_id",
+        "secrets",
+        "id",
+    ),
+    ("secret_attachments_secret_id_fkey", "secret_attachments", "secret_id", "secrets", "id"),
+]
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
-        # SQLite stores both String and Uuid as TEXT — nothing to do.
         return
 
-    # PostgreSQL: alter column types to native uuid
+    # 1. Drop FK constraints
+    for name, table, _col, _ref_table, _ref_col in _FK_CONSTRAINTS:
+        op.drop_constraint(name, table, type_="foreignkey")
+
+    # 2. Alter columns
     for table, column in _UUID_COLUMNS:
         op.alter_column(
             table,
@@ -48,13 +64,19 @@ def upgrade() -> None:
             postgresql_using=f"{column}::uuid",
         )
 
+    # 3. Re-add FK constraints
+    for name, table, col, ref_table, ref_col in _FK_CONSTRAINTS:
+        op.create_foreign_key(name, table, ref_table, [col], [ref_col])
+
 
 def downgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
         return
 
-    # PostgreSQL: revert to String(36)
+    for name, table, _col, _ref_table, _ref_col in _FK_CONSTRAINTS:
+        op.drop_constraint(name, table, type_="foreignkey")
+
     for table, column in _UUID_COLUMNS:
         op.alter_column(
             table,
@@ -63,3 +85,6 @@ def downgrade() -> None:
             existing_type=sa.Uuid(as_uuid=True),
             postgresql_using=f"{column}::text",
         )
+
+    for name, table, col, ref_table, ref_col in _FK_CONSTRAINTS:
+        op.create_foreign_key(name, table, ref_table, [col], [ref_col])
