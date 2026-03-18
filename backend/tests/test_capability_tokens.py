@@ -2,6 +2,7 @@
 
 import base64
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -219,7 +220,7 @@ class TestCapabilityTokenValidation:
     def test_validate_consumed_token(self, client, db_session):
         """Test validating a consumed token."""
         token_model, raw_token = create_capability_token(db_session, "basic")
-        consume_capability_token(db_session, token_model, "fake-secret-id")
+        consume_capability_token(db_session, token_model, uuid.uuid4())
 
         response = client.get(
             "/api/v1/capability-tokens/validate",
@@ -295,7 +296,7 @@ class TestSecretCreationWithToken:
         # Verify token is consumed
         db_session.refresh(token_model)
         assert token_model.consumed_at is not None
-        assert token_model.consumed_by_secret_id == data["secret_id"]
+        assert str(token_model.consumed_by_secret_id) == data["secret_id"]
 
     def test_create_secret_token_consumed_only_once(self, client, db_session):
         """Test that a token can only be used once."""
@@ -515,10 +516,11 @@ class TestCapabilityTokenService:
         assert token_model.consumed_at is None
         assert token_model.consumed_by_secret_id is None
 
-        consume_capability_token(db_session, token_model, "test-secret-id")
+        fake_secret_id = uuid.uuid4()
+        consume_capability_token(db_session, token_model, fake_secret_id)
 
         assert token_model.consumed_at is not None
-        assert token_model.consumed_by_secret_id == "test-secret-id"
+        assert token_model.consumed_by_secret_id == fake_secret_id
 
         # Should not be findable anymore
         found = find_capability_token(db_session, raw_token)

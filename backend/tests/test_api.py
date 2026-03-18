@@ -302,7 +302,7 @@ class TestSecrets:
 
         assert status_response.status_code == 200
         data = status_response.json()
-        assert data["id"] == secret.id
+        assert data["id"] == str(secret.id)
         assert data["exists"] is True
         assert data["status"] == "pending"
         assert "unlock_at" in data
@@ -331,7 +331,7 @@ class TestSecrets:
 
         assert status_response.status_code == 200
         data = status_response.json()
-        assert data["id"] == secret.id
+        assert data["id"] == str(secret.id)
         assert data["exists"] is True
         assert data["status"] == "unlocked"
 
@@ -358,7 +358,7 @@ class TestSecrets:
 
         assert status_response.status_code == 200
         data = status_response.json()
-        assert data["id"] == secret.id
+        assert data["id"] == str(secret.id)
         assert data["exists"] is True
         assert data["status"] == "expired"
 
@@ -386,7 +386,7 @@ class TestSecrets:
 
         assert status_response.status_code == 200
         data = status_response.json()
-        assert data["id"] == secret.id
+        assert data["id"] == str(secret.id)
         assert data["exists"] is True
         assert data["status"] == "retrieved"
 

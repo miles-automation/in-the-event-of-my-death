@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -11,7 +12,7 @@ class ChallengeCreate(BaseModel):
 
 
 class ChallengeResponse(BaseModel):
-    challenge_id: str
+    challenge_id: uuid.UUID
     nonce: str
     difficulty: int
     expires_at: datetime

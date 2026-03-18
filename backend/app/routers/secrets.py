@@ -1,4 +1,5 @@
 import base64
+import uuid
 from datetime import UTC, datetime
 
 import structlog
@@ -392,7 +393,7 @@ async def get_edit_status(
 @limiter.limit(settings.rate_limit_retrieves)
 async def get_status_by_id(
     request: Request,
-    secret_id: str,
+    secret_id: uuid.UUID,
     db: Session = Depends(get_db),
 ):
     """

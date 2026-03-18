@@ -2,6 +2,7 @@
 
 import hashlib
 import secrets
+import uuid
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
@@ -274,7 +275,7 @@ class TestAttachmentLinking:
         counter = solve_pow(challenge["nonce"], challenge["difficulty"], payload_hash_hex)
 
         # Try to create secret with non-existent attachment ID
-        fake_attachment_id = "nonexistent-attachment-id-12345"
+        fake_attachment_id = str(uuid.uuid4())
         create_response = client.post(
             "/api/v1/secrets",
             json={
@@ -327,7 +328,7 @@ class TestAttachmentLinking:
         counter = solve_pow(challenge["nonce"], challenge["difficulty"], payload_hash_hex)
 
         # Try to create secret with one valid and one invalid attachment ID
-        fake_attachment_id = "nonexistent-attachment-id-99999"
+        fake_attachment_id = str(uuid.uuid4())
         create_response = client.post(
             "/api/v1/secrets",
             json={
@@ -344,7 +345,7 @@ class TestAttachmentLinking:
                     "counter": counter,
                     "payload_hash": payload_hash_hex,
                 },
-                "attachment_ids": [orphan_attachment.id, fake_attachment_id],
+                "attachment_ids": [str(orphan_attachment.id), fake_attachment_id],
             },
         )
 
@@ -400,7 +401,7 @@ class TestAttachmentLinking:
                     "counter": counter,
                     "payload_hash": payload_hash_hex,
                 },
-                "attachment_ids": [orphan_attachment.id],
+                "attachment_ids": [str(orphan_attachment.id)],
             },
         )
 
@@ -409,7 +410,7 @@ class TestAttachmentLinking:
 
         # Verify the attachment is now linked to the secret
         db_session.refresh(orphan_attachment)
-        assert orphan_attachment.secret_id == secret_id
+        assert str(orphan_attachment.secret_id) == secret_id
 
     def test_link_attachments_returns_count(self, db_session, orphan_attachment):
         """Test that link_attachments_to_secret returns correct count."""
@@ -431,7 +432,7 @@ class TestAttachmentLinking:
         assert count == 1
 
         # Try to link non-existent attachment
-        count = link_attachments_to_secret(db_session, secret.id, ["fake-id"])
+        count = link_attachments_to_secret(db_session, secret.id, [uuid.uuid4()])
         assert count == 0
 
     def test_link_attachments_rejects_already_linked(self, db_session, orphan_attachment):

@@ -84,8 +84,8 @@ async def upload_attachment(
 
 def link_attachments_to_secret(
     db: Session,
-    secret_id: str,
-    attachment_ids: list[str],
+    secret_id: uuid.UUID,
+    attachment_ids: list[uuid.UUID],
 ) -> int:
     """
     Link orphaned attachments to a secret.

@@ -1,4 +1,5 @@
 import re
+import uuid
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -85,7 +86,7 @@ class AttachmentUploadResponse(BaseModel):
     """Response after successfully uploading an attachment."""
 
     storage_key: str
-    attachment_id: str
+    attachment_id: uuid.UUID
 
 
 class AttachmentMetadata(BaseModel):

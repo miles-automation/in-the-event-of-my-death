@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import Uuid
 
 from app.database import Base
 
@@ -14,7 +15,7 @@ if TYPE_CHECKING:
 class Secret(Base):
     __tablename__ = "secrets"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Token prefixes for O(1) lookup (first 16 hex chars of token)
     # These are indexed and used to narrow down candidates before Argon2 verification

@@ -1,4 +1,5 @@
 import base64
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
@@ -103,7 +104,7 @@ def find_secret_by_decrypt_token(db: Session, decrypt_token: str) -> Secret | No
     return None
 
 
-def find_secret_by_id(db: Session, secret_id: str) -> Secret | None:
+def find_secret_by_id(db: Session, secret_id: uuid.UUID) -> Secret | None:
     """Find a secret by its ID.
 
     The secret row is kept even after retrieval/expiry (ciphertext is cleared),
@@ -272,7 +273,7 @@ def get_secret_status(db: Session, secret: Secret) -> dict:
     }
 
 
-def get_secrets_needing_cleanup(db: Session) -> list[tuple[str, list[str]]]:
+def get_secrets_needing_cleanup(db: Session) -> list[tuple[uuid.UUID, list[str]]]:
     """
     Get secrets that need cleanup along with their attachment storage keys.
 
@@ -305,7 +306,7 @@ def get_secrets_needing_cleanup(db: Session) -> list[tuple[str, list[str]]]:
     return [(secret.id, [att.storage_key for att in secret.attachments]) for secret in secrets]
 
 
-def clear_secret_and_attachments(db: Session, secret_id: str) -> bool:
+def clear_secret_and_attachments(db: Session, secret_id: uuid.UUID) -> bool:
     """
     Clear a single secret's ciphertext and delete its attachment rows.
 
