@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.exceptions import ETagMismatchError, VaultBlobTooLargeError, VaultExistsError
 from app.models.vault import Vault
 
 MAX_VAULT_BLOB_SIZE = 5_000_000  # 5MB
@@ -51,14 +52,14 @@ def create_vault(
     ciphertext_b64: str,
     sync_token: str,
 ) -> tuple[Vault, str]:
-    """Create a new vault. Returns (vault, etag). Raises ValueError if exists."""
+    """Create a new vault. Returns (vault, etag). Raises VaultExistsError if exists."""
     existing = get_vault(db, vault_id)
     if existing:
-        raise ValueError("Vault already exists")
+        raise VaultExistsError()
 
     ciphertext = base64.b64decode(ciphertext_b64)
     if len(ciphertext) > MAX_VAULT_BLOB_SIZE:
-        raise ValueError(f"Vault blob exceeds {MAX_VAULT_BLOB_SIZE} byte limit")
+        raise VaultBlobTooLargeError(MAX_VAULT_BLOB_SIZE)
 
     etag = str(uuid.uuid4())
     vault = Vault(
@@ -80,13 +81,13 @@ def update_vault(
     ciphertext_b64: str,
     if_match_etag: str,
 ) -> tuple[Vault, str]:
-    """Update vault blob with ETag concurrency. Raises ValueError on conflict."""
+    """Update vault blob with ETag concurrency. Raises ETagMismatchError on conflict."""
     if vault.etag != if_match_etag:
-        raise ValueError("ETag mismatch — vault was modified by another device")
+        raise ETagMismatchError()
 
     ciphertext = base64.b64decode(ciphertext_b64)
     if len(ciphertext) > MAX_VAULT_BLOB_SIZE:
-        raise ValueError(f"Vault blob exceeds {MAX_VAULT_BLOB_SIZE} byte limit")
+        raise VaultBlobTooLargeError(MAX_VAULT_BLOB_SIZE)
 
     new_etag = str(uuid.uuid4())
     vault.ciphertext = ciphertext

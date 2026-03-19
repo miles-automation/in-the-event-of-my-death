@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.exceptions import ETagMismatchError, VaultBlobTooLargeError, VaultExistsError
 from app.middleware.rate_limit import limiter
 from app.schemas.vault import VaultGetResponse, VaultPutRequest, VaultPutResponse
 from app.services.vault_service import (
@@ -74,9 +75,9 @@ async def put_vault_blob(
     if if_none_match == "*":
         try:
             vault, etag = create_vault(db, vault_id, body.ciphertext, sync_token)
-        except ValueError as e:
-            if "already exists" in str(e):
-                raise HTTPException(status_code=412, detail="Vault already exists")
+        except VaultExistsError:
+            raise HTTPException(status_code=412, detail="Vault already exists")
+        except VaultBlobTooLargeError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
         logger.info("vault_created", vault_id=vault_id[:8])
@@ -97,9 +98,9 @@ async def put_vault_blob(
 
     try:
         vault, new_etag = update_vault(db, vault, body.ciphertext, etag_value)
-    except ValueError as e:
-        if "ETag mismatch" in str(e):
-            raise HTTPException(status_code=409, detail=str(e))
+    except ETagMismatchError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except VaultBlobTooLargeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     logger.info("vault_updated", vault_id=vault_id[:8])
