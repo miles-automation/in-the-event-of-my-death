@@ -41,6 +41,7 @@ class CapabilityToken(Base):
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     # Consumption tracking
     consumed_by_secret_id: Mapped[uuid.UUID | None] = mapped_column(

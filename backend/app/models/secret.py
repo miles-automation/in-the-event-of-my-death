@@ -39,6 +39,7 @@ class Secret(Base):
     )
     retrieved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
     cleared_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
 
     # Metadata
     ciphertext_size: Mapped[int] = mapped_column(Integer, nullable=False)

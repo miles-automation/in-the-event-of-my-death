@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
 import Home from './pages/Home'
 import ViewSecret from './pages/ViewSecret'
 import EditSecret from './pages/EditSecret'
@@ -34,6 +34,7 @@ function App() {
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/my-secrets" element={<MySecrets />} />
             <Route path="/pair" element={<PairDevice />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
 
