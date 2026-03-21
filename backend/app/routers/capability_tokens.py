@@ -8,9 +8,9 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.rate_limit import limiter
 from app.schemas.capability_token import (
-    CapabilityTokenCreate,
-    CapabilityTokenCreateResponse,
-    CapabilityTokenValidateResponse,
+    CapabilityTokenCreateOut,
+    CapabilityTokenIn,
+    CapabilityTokenValidateOut,
 )
 from app.services.capability_token_service import (
     create_capability_token,
@@ -29,11 +29,11 @@ def verify_internal_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> 
         raise HTTPException(status_code=401, detail="Invalid API key")
 
 
-@router.post("/capability-tokens", response_model=CapabilityTokenCreateResponse, status_code=201)
+@router.post("/capability-tokens", response_model=CapabilityTokenCreateOut, status_code=201)
 @limiter.limit(settings.rate_limit_token_create)
 async def create_token(
     request: Request,
-    token_data: CapabilityTokenCreate,
+    token_data: CapabilityTokenIn,
     db: Session = Depends(get_db),
     _: None = Depends(verify_internal_api_key),
 ):
@@ -61,7 +61,7 @@ async def create_token(
         payment_provider=token_data.payment_provider,
     )
 
-    return CapabilityTokenCreateResponse(
+    return CapabilityTokenCreateOut(
         token=raw_token,
         tier=token_model.tier,
         max_file_size_bytes=token_model.max_file_size_bytes,
@@ -71,7 +71,7 @@ async def create_token(
     )
 
 
-@router.get("/capability-tokens/validate", response_model=CapabilityTokenValidateResponse)
+@router.get("/capability-tokens/validate", response_model=CapabilityTokenValidateOut)
 @limiter.limit(settings.rate_limit_token_validate)
 async def validate_token(
     request: Request,
@@ -84,8 +84,8 @@ async def validate_token(
     Returns tier information if valid. Does not consume the token.
     """
     if len(x_capability_token) != 64:
-        return CapabilityTokenValidateResponse(valid=False, error="Invalid token format")
+        return CapabilityTokenValidateOut(valid=False, error="Invalid token format")
 
     result = validate_capability_token(db, x_capability_token)
 
-    return CapabilityTokenValidateResponse(**result)
+    return CapabilityTokenValidateOut(**result)

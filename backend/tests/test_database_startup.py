@@ -83,6 +83,6 @@ class TestDatabaseStartup:
         tables = set(inspector.get_table_names())
 
         required_tables = {"secrets", "pow_challenges"}
-        assert required_tables.issubset(
-            tables
-        ), f"Missing required tables. Expected: {required_tables}, Found: {tables}"
+        assert required_tables.issubset(tables), (
+            f"Missing required tables. Expected: {required_tables}, Found: {tables}"
+        )

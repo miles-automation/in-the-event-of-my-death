@@ -3,18 +3,18 @@ from fastapi import APIRouter, Request
 
 from app.config import settings
 from app.middleware.rate_limit import limiter
-from app.schemas.feedback import FeedbackCreate, FeedbackResponse
+from app.schemas.feedback import FeedbackIn, FeedbackOut
 from app.services.matrix_service import send_feedback_notification
 
 router = APIRouter(tags=["feedback"])
 logger = structlog.get_logger()
 
 
-@router.post("/feedback", response_model=FeedbackResponse, status_code=201)
+@router.post("/feedback", response_model=FeedbackOut, status_code=201)
 @limiter.limit(settings.rate_limit_feedback)
 async def submit_feedback(
     request: Request,
-    feedback: FeedbackCreate,
+    feedback: FeedbackIn,
 ):
     """
     Submit user feedback.
@@ -34,7 +34,7 @@ async def submit_feedback(
         message_length=len(feedback.message),
     )
 
-    return FeedbackResponse(
+    return FeedbackOut(
         success=True,
         message="Thank you for your feedback!",
     )

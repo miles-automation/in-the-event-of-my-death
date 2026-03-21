@@ -22,7 +22,7 @@ def strict_base64_decode(value: str, field_name: str) -> bytes:
         raise ValueError(f"{field_name}: Invalid base64 encoding")
 
 
-class AttachmentUploadRequest(BaseModel):
+class AttachmentUploadIn(BaseModel):
     """Request to upload an encrypted file attachment to object storage."""
 
     encrypted_blob: str = Field(..., description="Base64 encoded encrypted file bytes")
@@ -82,7 +82,7 @@ class AttachmentUploadRequest(BaseModel):
         return v
 
 
-class AttachmentUploadResponse(BaseModel):
+class AttachmentUploadOut(BaseModel):
     """Response after successfully uploading an attachment."""
 
     storage_key: str

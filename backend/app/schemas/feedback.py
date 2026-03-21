@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-class FeedbackCreate(BaseModel):
+class FeedbackIn(BaseModel):
     message: str = Field(..., min_length=10, max_length=2000)
     email: EmailStr | None = Field(None)
 
@@ -14,6 +14,6 @@ class FeedbackCreate(BaseModel):
         return v
 
 
-class FeedbackResponse(BaseModel):
+class FeedbackOut(BaseModel):
     success: bool
     message: str

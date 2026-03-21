@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.exceptions import ETagMismatchError, VaultBlobTooLargeError, VaultExistsError
 from app.middleware.rate_limit import limiter
-from app.schemas.vault import VaultGetResponse, VaultPutRequest, VaultPutResponse
+from app.schemas.vault import VaultGetOut, VaultPutIn, VaultPutOut
 from app.services.vault_service import (
     create_vault,
     get_vault_or_404,
@@ -31,7 +31,7 @@ def _validate_vault_id(vault_id: str) -> None:
         raise HTTPException(status_code=400, detail="Invalid vault_id format")
 
 
-@router.get("/vault/{vault_id}", response_model=VaultGetResponse)
+@router.get("/vault/{vault_id}", response_model=VaultGetOut)
 @limiter.limit("30/minute")
 async def get_vault_blob(
     request: Request,
@@ -47,7 +47,7 @@ async def get_vault_blob(
     logger.info("vault_read", vault_id=vault_id[:8])
 
     return Response(
-        content=VaultGetResponse(
+        content=VaultGetOut(
             ciphertext=base64.b64encode(vault.ciphertext).decode(),
             etag=vault.etag,
         ).model_dump_json(),
@@ -56,12 +56,12 @@ async def get_vault_blob(
     )
 
 
-@router.put("/vault/{vault_id}", response_model=VaultPutResponse)
+@router.put("/vault/{vault_id}", response_model=VaultPutOut)
 @limiter.limit("10/minute")
 async def put_vault_blob(
     request: Request,
     vault_id: str,
-    body: VaultPutRequest,
+    body: VaultPutIn,
     authorization: str = Header(...),
     if_match: str | None = Header(None, alias="If-Match"),
     if_none_match: str | None = Header(None, alias="If-None-Match"),
@@ -82,7 +82,7 @@ async def put_vault_blob(
 
         logger.info("vault_created", vault_id=vault_id[:8])
         return Response(
-            content=VaultPutResponse(etag=etag, created=True).model_dump_json(),
+            content=VaultPutOut(etag=etag, created=True).model_dump_json(),
             status_code=201,
             media_type="application/json",
             headers={"ETag": f'"{etag}"'},
@@ -105,7 +105,7 @@ async def put_vault_blob(
 
     logger.info("vault_updated", vault_id=vault_id[:8])
     return Response(
-        content=VaultPutResponse(etag=new_etag, created=False).model_dump_json(),
+        content=VaultPutOut(etag=new_etag, created=False).model_dump_json(),
         status_code=200,
         media_type="application/json",
         headers={"ETag": f'"{new_etag}"'},

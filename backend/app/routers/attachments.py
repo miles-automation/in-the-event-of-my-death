@@ -6,8 +6,8 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.rate_limit import limiter
 from app.schemas.attachment import (
-    AttachmentUploadRequest,
-    AttachmentUploadResponse,
+    AttachmentUploadIn,
+    AttachmentUploadOut,
 )
 from app.services.attachment_service import upload_attachment
 from app.services.storage_service import ObjectStorageService
@@ -21,11 +21,11 @@ def get_storage_service() -> ObjectStorageService:
     return ObjectStorageService(settings)
 
 
-@router.post("/attachments/upload", response_model=AttachmentUploadResponse, status_code=201)
+@router.post("/attachments/upload", response_model=AttachmentUploadOut, status_code=201)
 @limiter.limit(settings.rate_limit_creates)
 async def upload_attachment_endpoint(
     request: Request,
-    attachment_data: AttachmentUploadRequest,
+    attachment_data: AttachmentUploadIn,
     db: Session = Depends(get_db),
     storage_service: ObjectStorageService = Depends(get_storage_service),
 ):
@@ -77,7 +77,7 @@ async def upload_attachment_endpoint(
         blob_size=attachment.blob_size,
     )
 
-    return AttachmentUploadResponse(
+    return AttachmentUploadOut(
         storage_key=attachment.storage_key,
         attachment_id=attachment.id,
     )
