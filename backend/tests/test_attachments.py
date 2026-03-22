@@ -7,6 +7,7 @@ from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 
 from app.main import app
 from app.models.secret_attachment import SecretAttachment
@@ -202,7 +203,8 @@ class TestAttachmentRetrieval:
             db_session.expire_all()
             from app.models.secret import Secret
 
-            refreshed_secret = db_session.query(Secret).filter(Secret.id == secret.id).first()
+            stmt = select(Secret).where(Secret.id == secret.id)
+            refreshed_secret = db_session.scalars(stmt).first()
             assert refreshed_secret is not None
             assert refreshed_secret.retrieved_at is None
             assert refreshed_secret.ciphertext is not None

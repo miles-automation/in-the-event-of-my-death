@@ -2,6 +2,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -71,14 +72,11 @@ def find_capability_token(db: Session, raw_token: str) -> CapabilityToken | None
     Returns None if not found or already consumed.
     """
     prefix = get_token_prefix(raw_token)
-    candidates = (
-        db.query(CapabilityToken)
-        .filter(
-            CapabilityToken.token_prefix == prefix,
-            CapabilityToken.consumed_at == None,  # noqa: E711 - SQLAlchemy requires ==
-        )
-        .all()
+    stmt = select(CapabilityToken).where(
+        CapabilityToken.token_prefix == prefix,
+        CapabilityToken.consumed_at == None,  # noqa: E711 - SQLAlchemy requires ==
     )
+    candidates = db.scalars(stmt).all()
 
     for token in candidates:
         if verify_token(raw_token, token.token_hash):
@@ -98,14 +96,11 @@ def validate_capability_token(db: Session, raw_token: str) -> dict:
     if token is None:
         # Check if it was already consumed
         prefix = get_token_prefix(raw_token)
-        consumed_candidates = (
-            db.query(CapabilityToken)
-            .filter(
-                CapabilityToken.token_prefix == prefix,
-                CapabilityToken.consumed_at != None,  # noqa: E711
-            )
-            .all()
+        stmt = select(CapabilityToken).where(
+            CapabilityToken.token_prefix == prefix,
+            CapabilityToken.consumed_at != None,  # noqa: E711
         )
+        consumed_candidates = db.scalars(stmt).all()
         for consumed in consumed_candidates:
             if verify_token(raw_token, consumed.token_hash):
                 return {"valid": False, "consumed": True, "error": "Token already consumed"}

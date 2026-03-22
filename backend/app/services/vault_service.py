@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.exceptions import ETagMismatchError, VaultBlobTooLargeError, VaultExistsError
@@ -31,7 +32,8 @@ def verify_sync_token(vault: Vault, sync_token: str) -> bool:
 
 
 def get_vault(db: Session, vault_id: str) -> Vault | None:
-    return db.query(Vault).filter(Vault.vault_id == vault_id).first()
+    stmt = select(Vault).where(Vault.vault_id == vault_id)
+    return db.scalars(stmt).first()
 
 
 def get_vault_or_404(db: Session, vault_id: str, sync_token: str) -> Vault:
