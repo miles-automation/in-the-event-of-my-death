@@ -1,11 +1,11 @@
 import tempfile
 from pathlib import Path
 
+from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 import app.config as config_module
 from alembic import command
-from alembic.config import Config
 
 
 def test_alembic_upgrade_head_on_fresh_sqlite_db():

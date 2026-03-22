@@ -10,13 +10,13 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.rate_limit import limiter
 from app.schemas.secret import (
-    SecretCreate,
-    SecretCreateResponse,
-    SecretEditRequest,
-    SecretEditResponse,
-    SecretIdStatusResponse,
-    SecretRetrieveResponse,
-    SecretStatusResponse,
+    SecretCreateOut,
+    SecretEditIn,
+    SecretEditOut,
+    SecretIdStatusOut,
+    SecretIn,
+    SecretRetrieveOut,
+    SecretStatusOut,
 )
 from app.services.attachment_service import link_attachments_to_secret
 from app.services.capability_token_service import (
@@ -58,11 +58,11 @@ def extract_bearer_token(authorization: str = Header(...)) -> str:
     return authorization[7:]
 
 
-@router.post("/secrets", response_model=SecretCreateResponse, status_code=201)
+@router.post("/secrets", response_model=SecretCreateOut, status_code=201)
 @limiter.limit(settings.rate_limit_creates)
 async def create_new_secret(
     request: Request,
-    secret_data: SecretCreate,
+    secret_data: SecretIn,
     db: Session = Depends(get_db),
     x_capability_token: str | None = Header(None, alias="X-Capability-Token"),
 ):
@@ -216,7 +216,7 @@ async def create_new_secret(
             difficulty=challenge.difficulty,
         )
 
-    return SecretCreateResponse(
+    return SecretCreateOut(
         secret_id=secret.id,
         unlock_at=secret.unlock_at,
         expires_at=secret.expires_at,
@@ -224,11 +224,11 @@ async def create_new_secret(
     )
 
 
-@router.put("/secrets/edit", response_model=SecretEditResponse)
+@router.put("/secrets/edit", response_model=SecretEditOut)
 @limiter.limit(settings.rate_limit_retrieves)
 async def edit_secret(
     request: Request,
-    edit_data: SecretEditRequest,
+    edit_data: SecretEditIn,
     authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
@@ -247,14 +247,14 @@ async def edit_secret(
 
     logger.info("secret_edited", secret_id=updated_secret.id)
 
-    return SecretEditResponse(
+    return SecretEditOut(
         secret_id=updated_secret.id,
         unlock_at=updated_secret.unlock_at,
         expires_at=updated_secret.expires_at,
     )
 
 
-@router.get("/secrets/retrieve", response_model=SecretRetrieveResponse)
+@router.get("/secrets/retrieve", response_model=SecretRetrieveOut)
 @limiter.limit(settings.rate_limit_retrieves)
 async def retrieve_secret_endpoint(
     request: Request,
@@ -342,10 +342,10 @@ async def retrieve_secret_endpoint(
             attachment["presigned_url"] = presigned_urls[attachment["storage_key"]]
 
     logger.info("secret_retrieved", secret_id=secret.id)
-    return SecretRetrieveResponse(**result)
+    return SecretRetrieveOut(**result)
 
 
-@router.get("/secrets/status", response_model=SecretStatusResponse)
+@router.get("/secrets/status", response_model=SecretStatusOut)
 @limiter.limit(settings.rate_limit_retrieves)
 async def get_status(
     request: Request,
@@ -361,13 +361,13 @@ async def get_status(
 
     secret = find_secret_by_decrypt_token(db, decrypt_token)
     if not secret:
-        return SecretStatusResponse(exists=False, status="not_found")
+        return SecretStatusOut(exists=False, status="not_found")
 
     status = get_secret_status(db, secret)
-    return SecretStatusResponse(**status)
+    return SecretStatusOut(**status)
 
 
-@router.get("/secrets/edit/status", response_model=SecretStatusResponse)
+@router.get("/secrets/edit/status", response_model=SecretStatusOut)
 @limiter.limit(settings.rate_limit_retrieves)
 async def get_edit_status(
     request: Request,
@@ -383,13 +383,13 @@ async def get_edit_status(
 
     secret = find_secret_by_edit_token(db, edit_token)
     if not secret:
-        return SecretStatusResponse(exists=False, status="not_found")
+        return SecretStatusOut(exists=False, status="not_found")
 
     status = get_secret_status(db, secret)
-    return SecretStatusResponse(**status)
+    return SecretStatusOut(**status)
 
 
-@router.get("/secrets/{secret_id}/status", response_model=SecretIdStatusResponse)
+@router.get("/secrets/{secret_id}/status", response_model=SecretIdStatusOut)
 @limiter.limit(settings.rate_limit_retrieves)
 async def get_status_by_id(
     request: Request,
@@ -410,7 +410,7 @@ async def get_status_by_id(
     raw = secret_status["status"]
     mapped_status = "unlocked" if raw == "available" else raw
 
-    return SecretIdStatusResponse(
+    return SecretIdStatusOut(
         id=secret.id,
         status=mapped_status,
         unlock_at=secret.unlock_at,

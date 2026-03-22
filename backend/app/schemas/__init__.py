@@ -1,22 +1,25 @@
-from app.schemas.challenge import ChallengeCreate, ChallengeResponse
+# Platform pattern violations (API-breaking, tracked for future major version):
+#   - PowProof → PowProofIn (request schema, missing -In suffix)
+#   - AttachmentMetadata → AttachmentMetadataOut (response, missing -Out suffix)
+from app.schemas.challenge import ChallengeIn, ChallengeOut
 from app.schemas.secret import (
     PowProof,
-    SecretCreate,
-    SecretCreateResponse,
-    SecretEditRequest,
-    SecretEditResponse,
-    SecretRetrieveResponse,
-    SecretStatusResponse,
+    SecretCreateOut,
+    SecretEditIn,
+    SecretEditOut,
+    SecretIn,
+    SecretRetrieveOut,
+    SecretStatusOut,
 )
 
 __all__ = [
-    "ChallengeCreate",
-    "ChallengeResponse",
+    "ChallengeIn",
+    "ChallengeOut",
     "PowProof",
-    "SecretCreate",
-    "SecretCreateResponse",
-    "SecretEditRequest",
-    "SecretEditResponse",
-    "SecretRetrieveResponse",
-    "SecretStatusResponse",
+    "SecretCreateOut",
+    "SecretEditIn",
+    "SecretEditOut",
+    "SecretIn",
+    "SecretRetrieveOut",
+    "SecretStatusOut",
 ]

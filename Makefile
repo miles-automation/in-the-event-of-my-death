@@ -21,13 +21,13 @@ help:
 	@echo "  make migrate   - Run database migrations"
 
 install:
-	cd backend && poetry install
+	cd backend && uv sync
 	cd frontend && npm install
 	@$(MAKE) hooks
 
 # backend-server: internal target without migrate (called by dev after migrate runs once)
 backend-server:
-	cd backend && poetry run uvicorn app.main:app --reload --host $(BACKEND_HOST) --port $(BACKEND_PORT)
+	cd backend && uv run uvicorn app.main:app --reload --host $(BACKEND_HOST) --port $(BACKEND_PORT)
 
 backend: migrate backend-server
 
@@ -53,19 +53,19 @@ minio-down:
 	docker compose down
 
 test:
-	cd backend && poetry run pytest tests/ -v
+	cd backend && uv run pytest tests/ -v
 	cd frontend && npm run test -- --run
 
 lint:
-	cd backend && poetry run ruff check .
+	cd backend && uv run ruff check .
 	cd frontend && npm run lint
 
 format:
-	cd backend && poetry run ruff format .
+	cd backend && uv run ruff format .
 	cd frontend && npm run format:write
 
 format-check:
-	cd backend && poetry run ruff format --check .
+	cd backend && uv run ruff format --check .
 	cd frontend && npm run format
 
 typecheck:
@@ -78,4 +78,4 @@ hooks:
 	git config core.hooksPath .githooks
 
 migrate:
-	cd backend && poetry run alembic upgrade head
+	cd backend && uv run alembic upgrade head

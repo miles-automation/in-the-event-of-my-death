@@ -1,8 +1,8 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "Running database migrations..."
-python -m alembic upgrade head
+# Run migrations
+alembic upgrade head
 
-echo "Starting server..."
-exec python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Start server
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000

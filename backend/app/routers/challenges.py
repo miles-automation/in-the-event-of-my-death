@@ -5,18 +5,18 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.middleware.rate_limit import limiter
-from app.schemas.challenge import ChallengeCreate, ChallengeResponse
+from app.schemas.challenge import ChallengeIn, ChallengeOut
 from app.services.pow_service import generate_challenge
 
 router = APIRouter(tags=["challenges"])
 logger = structlog.get_logger()
 
 
-@router.post("/challenges", response_model=ChallengeResponse, status_code=201)
+@router.post("/challenges", response_model=ChallengeOut, status_code=201)
 @limiter.limit(settings.rate_limit_challenges)
 async def create_challenge(
     request: Request,
-    challenge_data: ChallengeCreate,
+    challenge_data: ChallengeIn,
     db: Session = Depends(get_db),
 ):
     """
@@ -37,7 +37,7 @@ async def create_challenge(
         ciphertext_size=challenge_data.ciphertext_size,
     )
 
-    return ChallengeResponse(
+    return ChallengeOut(
         challenge_id=challenge.id,
         nonce=challenge.nonce,
         difficulty=challenge.difficulty,

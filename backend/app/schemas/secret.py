@@ -47,7 +47,7 @@ class PowProof(BaseModel):
     payload_hash: str = Field(..., min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
 
 
-class SecretCreate(BaseModel):
+class SecretIn(BaseModel):
     ciphertext: str = Field(..., description="Base64 encoded ciphertext")
     iv: str = Field(..., description="Base64 encoded 12-byte IV")
     auth_tag: str = Field(..., description="Base64 encoded 16-byte auth tag")
@@ -124,7 +124,7 @@ class SecretCreate(BaseModel):
         return v_naive
 
     @model_validator(mode="after")
-    def validate_and_compute_dates(self) -> "SecretCreate":
+    def validate_and_compute_dates(self) -> "SecretIn":
         now = datetime.now(UTC).replace(tzinfo=None)
 
         # Calculate unlock_at from preset if provided
@@ -180,14 +180,14 @@ class SecretCreate(BaseModel):
         return self
 
 
-class SecretCreateResponse(BaseModel):
+class SecretCreateOut(BaseModel):
     secret_id: uuid.UUID
     unlock_at: UTCDateTime
     expires_at: UTCDateTime
     created_at: UTCDateTime
 
 
-class SecretEditRequest(BaseModel):
+class SecretEditIn(BaseModel):
     unlock_at: datetime
     expires_at: datetime
 
@@ -212,7 +212,7 @@ class SecretEditRequest(BaseModel):
         return v_naive
 
     @model_validator(mode="after")
-    def validate_expiry_constraints(self) -> "SecretEditRequest":
+    def validate_expiry_constraints(self) -> "SecretEditIn":
         min_gap = timedelta(minutes=settings.min_expiry_gap_minutes)
         if self.expires_at <= self.unlock_at:
             raise ValueError("expires_at must be after unlock_at")
@@ -222,20 +222,20 @@ class SecretEditRequest(BaseModel):
         return self
 
 
-class SecretEditResponse(BaseModel):
+class SecretEditOut(BaseModel):
     secret_id: uuid.UUID
     unlock_at: UTCDateTime
     expires_at: UTCDateTime
 
 
-class SecretStatusResponse(BaseModel):
+class SecretStatusOut(BaseModel):
     exists: bool
     status: Literal["pending", "available", "expired", "retrieved", "not_found"]
     unlock_at: UTCDateTime | None = None
     expires_at: UTCDateTime | None = None  # None only when exists=False
 
 
-class SecretIdStatusResponse(BaseModel):
+class SecretIdStatusOut(BaseModel):
     id: uuid.UUID
     # Always True: non-existent secrets return 404 (kept for API consistency).
     exists: Literal[True] = True
@@ -244,7 +244,7 @@ class SecretIdStatusResponse(BaseModel):
     expires_at: UTCDateTime
 
 
-class AttachmentMetadataResponse(BaseModel):
+class AttachmentMetadataOut(BaseModel):
     """Attachment metadata returned when retrieving a secret."""
 
     storage_key: str
@@ -258,7 +258,7 @@ class AttachmentMetadataResponse(BaseModel):
     presigned_url: str  # Presigned download URL (valid for 5 minutes)
 
 
-class SecretRetrieveResponse(BaseModel):
+class SecretRetrieveOut(BaseModel):
     status: str
     ciphertext: str | None = None
     iv: str | None = None
@@ -266,4 +266,4 @@ class SecretRetrieveResponse(BaseModel):
     unlock_at: UTCDateTime | None = None
     retrieved_at: UTCDateTime | None = None
     message: str | None = None
-    attachments: list[AttachmentMetadataResponse] | None = None
+    attachments: list[AttachmentMetadataOut] | None = None

@@ -3,7 +3,7 @@ import re
 from pydantic import BaseModel, Field, field_validator
 
 
-class VaultPutRequest(BaseModel):
+class VaultPutIn(BaseModel):
     ciphertext: str = Field(..., description="Base64-encoded encrypted vault blob")
 
     @field_validator("ciphertext")
@@ -16,11 +16,11 @@ class VaultPutRequest(BaseModel):
         return v
 
 
-class VaultGetResponse(BaseModel):
+class VaultGetOut(BaseModel):
     ciphertext: str
     etag: str
 
 
-class VaultPutResponse(BaseModel):
+class VaultPutOut(BaseModel):
     etag: str
     created: bool
