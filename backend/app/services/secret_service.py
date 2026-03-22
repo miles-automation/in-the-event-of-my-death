@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.secret import Secret
@@ -64,14 +65,11 @@ def find_secret_by_edit_token(db: Session, edit_token: str) -> Secret | None:
     but handled correctly by verifying the full hash.
     """
     prefix = get_token_prefix(edit_token)
-    candidates = (
-        db.query(Secret)
-        .filter(
-            Secret.edit_token_prefix == prefix,
-            Secret.is_deleted == False,  # noqa: E712
-        )
-        .all()
+    stmt = select(Secret).where(
+        Secret.edit_token_prefix == prefix,
+        Secret.is_deleted == False,  # noqa: E712
     )
+    candidates = db.scalars(stmt).all()
 
     for secret in candidates:
         if verify_token(edit_token, secret.edit_token_hash):
@@ -88,14 +86,11 @@ def find_secret_by_decrypt_token(db: Session, decrypt_token: str) -> Secret | No
     but handled correctly by verifying the full hash.
     """
     prefix = get_token_prefix(decrypt_token)
-    candidates = (
-        db.query(Secret)
-        .filter(
-            Secret.decrypt_token_prefix == prefix,
-            Secret.is_deleted == False,  # noqa: E712
-        )
-        .all()
+    stmt = select(Secret).where(
+        Secret.decrypt_token_prefix == prefix,
+        Secret.is_deleted == False,  # noqa: E712
     )
+    candidates = db.scalars(stmt).all()
 
     for secret in candidates:
         if verify_token(decrypt_token, secret.decrypt_token_hash):
@@ -110,7 +105,8 @@ def find_secret_by_id(db: Session, secret_id: uuid.UUID) -> Secret | None:
     The secret row is kept even after retrieval/expiry (ciphertext is cleared),
     so ID-based status checks must not filter on `is_deleted`.
     """
-    return db.query(Secret).filter(Secret.id == secret_id).first()
+    stmt = select(Secret).where(Secret.id == secret_id)
+    return db.scalars(stmt).first()
 
 
 # --- get_*_or_404 helpers (PLATFORM_PATTERNS.md) ---
@@ -290,18 +286,18 @@ def get_secrets_needing_cleanup(db: Session) -> list[tuple[uuid.UUID, list[str]]
 
     now = datetime.now(UTC).replace(tzinfo=None)
 
-    secrets = (
-        db.query(Secret)
+    stmt = (
+        select(Secret)
         .options(joinedload(Secret.attachments))
-        .filter(
+        .where(
             Secret.cleared_at == None,  # noqa: E711 - Not already cleared
             or_(
                 Secret.expires_at <= now,  # Expired
                 Secret.retrieved_at != None,  # noqa: E711 - Retrieved
             ),
         )
-        .all()
     )
+    secrets = db.scalars(stmt).unique().all()
 
     return [(secret.id, [att.storage_key for att in secret.attachments]) for secret in secrets]
 
@@ -316,16 +312,19 @@ def clear_secret_and_attachments(db: Session, secret_id: uuid.UUID) -> bool:
 
     Returns True if the secret was cleared, False if not found or already cleared.
     """
+    from sqlalchemy import delete as sa_delete
+
     from app.models.secret_attachment import SecretAttachment
 
     now = datetime.now(UTC).replace(tzinfo=None)
 
-    secret = db.query(Secret).filter(Secret.id == secret_id).first()
+    stmt = select(Secret).where(Secret.id == secret_id)
+    secret = db.scalars(stmt).first()
     if secret is None or secret.cleared_at is not None:
         return False
 
     # Explicitly delete attachment rows (CASCADE won't trigger on UPDATE)
-    db.query(SecretAttachment).filter(SecretAttachment.secret_id == secret_id).delete()
+    db.execute(sa_delete(SecretAttachment).where(SecretAttachment.secret_id == secret_id))
 
     # Clear the secret's ciphertext
     secret.ciphertext = None
@@ -356,27 +355,26 @@ def clear_expired_secrets(db: Session) -> tuple[int, list[str]]:
 
     Returns a tuple of (count of cleared secrets, empty list for compatibility).
     """
-    from sqlalchemy import or_
+    from sqlalchemy import or_, update
 
     now = datetime.now(UTC).replace(tzinfo=None)
 
-    result = (
-        db.query(Secret)
-        .filter(
+    stmt = (
+        update(Secret)
+        .where(
             Secret.cleared_at == None,  # noqa: E711 - Not already cleared
             or_(
                 Secret.expires_at <= now,  # Expired
                 Secret.retrieved_at != None,  # noqa: E711 - Retrieved
             ),
         )
-        .update(
-            {
-                "ciphertext": None,
-                "iv": None,
-                "auth_tag": None,
-                "cleared_at": now,
-            }
+        .values(
+            ciphertext=None,
+            iv=None,
+            auth_tag=None,
+            cleared_at=now,
         )
     )
+    result = db.execute(stmt)
     db.commit()
-    return result, []
+    return result.rowcount, []

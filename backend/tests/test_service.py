@@ -5,6 +5,7 @@ import secrets
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import func, select
 
 from app.services.secret_service import (
     TOKEN_PREFIX_LENGTH,
@@ -522,12 +523,10 @@ class TestAttachmentCleanup:
         db_session.commit()
 
         # Verify attachment exists
-        assert (
-            db_session.query(SecretAttachment)
-            .filter(SecretAttachment.secret_id == expired_secret.id)
-            .count()
-            == 1
+        count_stmt = select(func.count(SecretAttachment.id)).where(
+            SecretAttachment.secret_id == expired_secret.id
         )
+        assert db_session.execute(count_stmt).scalar() == 1
 
         # Clear the secret
         result = clear_secret_and_attachments(db_session, expired_secret.id)
@@ -540,12 +539,7 @@ class TestAttachmentCleanup:
         assert expired_secret.ciphertext is None
 
         # Verify attachment row is deleted
-        assert (
-            db_session.query(SecretAttachment)
-            .filter(SecretAttachment.secret_id == expired_secret.id)
-            .count()
-            == 0
-        )
+        assert db_session.execute(count_stmt).scalar() == 0
 
     def test_clear_secret_and_attachments_already_cleared(self, db_session, sample_tokens):
         """Test that already-cleared secrets return False."""

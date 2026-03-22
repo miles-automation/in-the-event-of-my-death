@@ -4,6 +4,8 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -66,7 +68,8 @@ def validate_pow(
     Returns the Challenge if valid, raises ValueError with specific message if invalid.
     Use mark_challenge_used() after all other validations pass.
     """
-    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    stmt = select(Challenge).where(Challenge.id == challenge_id)
+    challenge = db.scalars(stmt).first()
 
     if not challenge:
         raise ValueError("Challenge not found")
@@ -109,10 +112,7 @@ def mark_challenge_used(db: Session, challenge: Challenge) -> None:
 
 def cleanup_expired_challenges(db: Session) -> int:
     """Delete expired challenges. Returns count of deleted rows."""
-    result = (
-        db.query(Challenge)
-        .filter(Challenge.expires_at < datetime.now(UTC).replace(tzinfo=None))
-        .delete()
-    )
+    stmt = sa_delete(Challenge).where(Challenge.expires_at < datetime.now(UTC).replace(tzinfo=None))
+    result = db.execute(stmt)
     db.commit()
-    return result
+    return result.rowcount

@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
+from sqlalchemy import select
 from starlette.requests import Request
 
 from app.middleware.rate_limit import get_real_client_ip
@@ -1146,11 +1147,8 @@ class TestRetrieveEndpoint:
         assert create_response.status_code == 201
 
         # Get the secret from the database
-        secret = (
-            db_session.query(Secret)
-            .filter(Secret.decrypt_token_prefix == test_data["decrypt_token"][:16])
-            .first()
-        )
+        stmt = select(Secret).where(Secret.decrypt_token_prefix == test_data["decrypt_token"][:16])
+        secret = db_session.scalars(stmt).first()
         assert secret is not None
 
         return secret, test_data

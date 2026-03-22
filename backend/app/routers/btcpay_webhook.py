@@ -84,16 +84,15 @@ async def handle_btcpay_webhook(
     # The payment_reference field stores the invoice ID
     db = SessionLocal()
     try:
+        from sqlalchemy import select
+
         from app.models.capability_token import CapabilityToken
 
-        existing = (
-            db.query(CapabilityToken)
-            .filter(
-                CapabilityToken.payment_provider == "btcpay",
-                CapabilityToken.payment_reference == invoice_id,
-            )
-            .first()
+        stmt = select(CapabilityToken).where(
+            CapabilityToken.payment_provider == "btcpay",
+            CapabilityToken.payment_reference == invoice_id,
         )
+        existing = db.scalars(stmt).first()
 
         if existing:
             logger.info(
@@ -159,16 +158,15 @@ async def get_payment_token(invoice_id: str):
 
     db = SessionLocal()
     try:
+        from sqlalchemy import select
+
         from app.models.capability_token import CapabilityToken
 
-        token = (
-            db.query(CapabilityToken)
-            .filter(
-                CapabilityToken.payment_provider == "btcpay",
-                CapabilityToken.payment_reference == invoice_id,
-            )
-            .first()
+        stmt = select(CapabilityToken).where(
+            CapabilityToken.payment_provider == "btcpay",
+            CapabilityToken.payment_reference == invoice_id,
         )
+        token = db.scalars(stmt).first()
 
         if not token:
             return {

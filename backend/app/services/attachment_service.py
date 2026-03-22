@@ -2,6 +2,7 @@ import base64
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -102,17 +103,18 @@ def link_attachments_to_secret(
         return 0
 
     # Update all matching attachments that are still orphaned
-    count = (
-        db.query(SecretAttachment)
-        .filter(
+    stmt = (
+        update(SecretAttachment)
+        .where(
             SecretAttachment.id.in_(attachment_ids),
             SecretAttachment.secret_id == None,  # noqa: E711 - Only link orphaned
         )
-        .update({"secret_id": secret_id}, synchronize_session=False)
+        .values(secret_id=secret_id)
     )
+    result = db.execute(stmt)
 
     db.commit()
-    return count
+    return result.rowcount
 
 
 def find_attachment_by_storage_key(
@@ -129,7 +131,8 @@ def find_attachment_by_storage_key(
     Returns:
         The attachment if found, None otherwise
     """
-    return db.query(SecretAttachment).filter(SecretAttachment.storage_key == storage_key).first()
+    stmt = select(SecretAttachment).where(SecretAttachment.storage_key == storage_key)
+    return db.scalars(stmt).first()
 
 
 def get_attachment_with_secret(
@@ -153,7 +156,8 @@ def get_attachment_with_secret(
     if attachment.secret_id is None:
         return None  # Orphaned attachment
 
-    secret = db.query(Secret).filter(Secret.id == attachment.secret_id).first()
+    stmt = select(Secret).where(Secret.id == attachment.secret_id)
+    secret = db.scalars(stmt).first()
     if secret is None:
         return None
 
@@ -178,14 +182,11 @@ def get_orphaned_attachments(
     """
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=max_age_hours)
 
-    return (
-        db.query(SecretAttachment)
-        .filter(
-            SecretAttachment.secret_id == None,  # noqa: E711 - Orphaned
-            SecretAttachment.created_at < cutoff,
-        )
-        .all()
+    stmt = select(SecretAttachment).where(
+        SecretAttachment.secret_id == None,  # noqa: E711 - Orphaned
+        SecretAttachment.created_at < cutoff,
     )
+    return db.scalars(stmt).all()
 
 
 async def delete_orphaned_attachments(

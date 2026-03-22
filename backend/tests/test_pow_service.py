@@ -3,10 +3,17 @@
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
 
 from app.models.challenge import Challenge
 from app.services.pow_service import cleanup_expired_challenges, generate_challenge
 from tests.test_utils import utcnow
+
+
+def _find_challenge(db_session, challenge_id):
+    """Helper: look up a Challenge by ID using select() style."""
+    stmt = select(Challenge).where(Challenge.id == challenge_id)
+    return db_session.scalars(stmt).first()
 
 
 @pytest.fixture
@@ -28,14 +35,14 @@ class TestCleanupExpiredChallenges:
         db_session.commit()
 
         # Verify it exists
-        assert db_session.query(Challenge).filter(Challenge.id == challenge.id).first() is not None
+        assert _find_challenge(db_session, challenge.id) is not None
 
         # Run cleanup
         deleted_count = cleanup_expired_challenges(db_session)
 
         # Verify it was deleted
         assert deleted_count == 1
-        assert db_session.query(Challenge).filter(Challenge.id == challenge.id).first() is None
+        assert _find_challenge(db_session, challenge.id) is None
 
     def test_cleanup_does_not_delete_valid_challenges(self, db_session, sample_payload_hash):
         """Test that non-expired challenges are not deleted."""
@@ -43,7 +50,7 @@ class TestCleanupExpiredChallenges:
         challenge = generate_challenge(db_session, sample_payload_hash, 100)
 
         # Verify it exists and is not expired
-        assert db_session.query(Challenge).filter(Challenge.id == challenge.id).first() is not None
+        assert _find_challenge(db_session, challenge.id) is not None
         assert challenge.expires_at > utcnow()
 
         # Run cleanup
@@ -51,7 +58,7 @@ class TestCleanupExpiredChallenges:
 
         # Verify it was not deleted
         assert deleted_count == 0
-        assert db_session.query(Challenge).filter(Challenge.id == challenge.id).first() is not None
+        assert _find_challenge(db_session, challenge.id) is not None
 
     def test_cleanup_mixed_challenges(self, db_session, sample_payload_hash):
         """Test cleanup with both expired and valid challenges."""
@@ -70,13 +77,8 @@ class TestCleanupExpiredChallenges:
 
         # Verify only expired was deleted
         assert deleted_count == 1
-        assert (
-            db_session.query(Challenge).filter(Challenge.id == valid_challenge_id).first()
-            is not None
-        )
-        assert (
-            db_session.query(Challenge).filter(Challenge.id == expired_challenge_id).first() is None
-        )
+        assert _find_challenge(db_session, valid_challenge_id) is not None
+        assert _find_challenge(db_session, expired_challenge_id) is None
 
     def test_cleanup_used_but_not_expired_challenges_remain(self, db_session, sample_payload_hash):
         """Test that used but not expired challenges are not deleted."""
@@ -90,4 +92,4 @@ class TestCleanupExpiredChallenges:
 
         # Verify it was not deleted (cleanup only targets expired, not used)
         assert deleted_count == 0
-        assert db_session.query(Challenge).filter(Challenge.id == challenge.id).first() is not None
+        assert _find_challenge(db_session, challenge.id) is not None

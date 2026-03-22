@@ -179,11 +179,16 @@ async def create_new_secret(
             # All-or-nothing: if not all attachments could be linked, fail the request
             # This can happen if attachments were deleted, already linked, or don't exist
             # Clean up: unlink any attachments that were linked and delete the secret
+            from sqlalchemy import update as sa_update
+
             from app.models.secret_attachment import SecretAttachment
 
-            db.query(SecretAttachment).filter(SecretAttachment.secret_id == secret.id).update(
-                {"secret_id": None}, synchronize_session=False
+            stmt = (
+                sa_update(SecretAttachment)
+                .where(SecretAttachment.secret_id == secret.id)
+                .values(secret_id=None)
             )
+            db.execute(stmt)
             db.delete(secret)
             db.commit()
             raise HTTPException(
