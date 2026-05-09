@@ -28,7 +28,7 @@ jobs:
   deploy:
     runs-on: ${{ fromJSON(inputs.runner_target == 'ubuntu-latest' && '"ubuntu-latest"' || '["self-hosted","linux","x64","do-1gb-canary"]') }}
     env:
-      SPARK_SWARM_API_URL: https://swarm.sparkswarm.com/api/v1
+      SPARK_SWARM_API_URL: https://sparkswarm.com/api/v1
       PROD_HOST: 159.65.241.127
     steps:
       - name: Checkout (target ref)
