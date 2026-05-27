@@ -6,6 +6,7 @@ authors = [{ name = "Rich Miles", email = "rich@ieomd.com" }]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.109.0",
+    "starlette>=1.0.1",
     "uvicorn[standard]>=0.27.0",
     "sqlalchemy>=2.0.25",
     "alembic>=1.13.1",
