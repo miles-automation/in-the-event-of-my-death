@@ -28,19 +28,19 @@ jobs:
   check:
     runs-on: ${{ fromJSON(inputs.runner_target == 'self-hosted-canary' && '["self-hosted","linux","x64","do-1gb-canary"]' || '"ubuntu-latest"') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@v7
       - name: Install backend deps
         working-directory: backend
         run: uv sync --frozen
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -55,7 +55,7 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_target == 'self-hosted-canary' && '["self-hosted","linux","x64","do-1gb-canary"]' || '"ubuntu-latest"') }}
     needs: check
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
 
