@@ -243,9 +243,11 @@ if STATIC_DIR.exists():
         if full_path.startswith("api/") or full_path == "health":
             raise HTTPException(status_code=404, detail="Not found")
 
-        # Serve static file if it exists
-        file_path = STATIC_DIR / full_path
-        if file_path.is_file():
+        # Serve static file if it exists (must stay within STATIC_DIR;
+        # `STATIC_DIR / "/abs"` collapses to the absolute path, so guard it)
+        file_path = (STATIC_DIR / full_path).resolve()
+        static_root = STATIC_DIR.resolve()
+        if file_path.is_relative_to(static_root) and file_path.is_file():
             return FileResponse(file_path)
 
         # Otherwise serve index.html for client-side routing
