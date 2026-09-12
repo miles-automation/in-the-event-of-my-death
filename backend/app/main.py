@@ -229,6 +229,14 @@ async def api_healthz_check(db: Session = Depends(get_db)):
 
 
 # Static file serving for production (when frontend is built into ./static)
+def _safe_spa_file(static_root: Path, path: str) -> Path:
+    candidate = (static_root / path).resolve()
+    root = static_root.resolve()
+    if candidate.is_relative_to(root) and candidate.is_file():
+        return candidate
+    return root / "index.html"
+
+
 STATIC_DIR = Path(__file__).parent.parent / "static"
 
 if STATIC_DIR.exists():
@@ -243,14 +251,8 @@ if STATIC_DIR.exists():
         if full_path.startswith("api/") or full_path == "health":
             raise HTTPException(status_code=404, detail="Not found")
 
-        # Serve static file if it exists
-        file_path = STATIC_DIR / full_path
-        if file_path.is_file():
-            return FileResponse(file_path)
-
-        # Otherwise serve index.html for client-side routing
-        index_path = STATIC_DIR / "index.html"
-        if index_path.exists():
-            return FileResponse(index_path)
+        target = _safe_spa_file(STATIC_DIR, full_path)
+        if target.is_file():
+            return FileResponse(target)
 
         raise HTTPException(status_code=404, detail="Not found")
