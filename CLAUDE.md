@@ -76,7 +76,6 @@ Claude has authenticated access to these CLIs for infrastructure and repo manage
 - **`gh`** - GitHub CLI (authenticated)
   - Issues: `gh issue list`, `gh issue create`, `gh issue view <issue-number>`
   - PRs: `gh pr create`, `gh pr list`, `gh pr view <pr-number>`
-  - PR reviews: see “Posting PR Review Notes via `gh`” below
   - Workflows: `gh workflow run <name>`, `gh run list`, `gh run view <run-id>`
   - Projects: `gh project item-add <project-number> --owner richmiles --url <issue-url>`
   - API: `gh api <endpoint>` for any GitHub API call
@@ -91,25 +90,8 @@ Claude has authenticated access to these CLIs for infrastructure and repo manage
 
 ---
 
-## Posting PR Review Notes via `gh`
-When leaving review feedback with `gh pr review`, prefer `--body-file` to avoid shell interpolation/escaping issues (especially with backticks, `$VARS`, or code blocks).
-
-```bash
-tmpfile="$(mktemp)"
-trap 'rm -f "$tmpfile"' EXIT
-cat > "$tmpfile" <<'EOF'
-Summary:
-- Looks good overall
-
-Requested changes:
-- Please add a test for the new edge case
-EOF
-
-gh pr review 123 --comment --body-file "$tmpfile"
-# or:
-gh pr review 123 --request-changes --body-file "$tmpfile"
-gh pr review 123 --approve --body-file "$tmpfile"
-```
+## Review notes
+Post reviews, findings, decisions and replies to them as Spark Swarm task comments on the affected task. Never post them on GitHub (`gh pr review`, `gh pr comment`, review requests); GitHub holds code and pull requests only.
 
 ## Workflow
 
